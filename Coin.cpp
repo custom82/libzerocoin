@@ -10,14 +10,14 @@
 #include <openssl/sha.h>
 #include <openssl/aes.h>
 #include <openssl/evp.h>
-#include <openssl/provider.h>  // <-- AGGIUNGI QUESTO
+#include <openssl/provider.h>  // AGGIUNTO: per OpenSSL 3.x
 #include <stdexcept>
 
 using namespace std;
 
 namespace libzerocoin {
 
-	// AGGIUNGI: Inizializzazione OpenSSL 3.x
+	// AGGIUNTO: Inizializzazione OpenSSL 3.x
 	#if OPENSSL_VERSION_NUMBER >= 0x30000000L
 	static void init_openssl_3_if_needed() {
 		static bool initialized = false;
@@ -29,17 +29,73 @@ namespace libzerocoin {
 	}
 	#endif
 
-	// MODIFICA: EncryptSerialNumber - usa EVP_CIPHER_CTX_new() invece del vecchio stile
+	PublicCoin::PublicCoin(const Params* p):
+	params(p) {
+		if (this->params->initialized) {
+			this->randomize();
+		}
+	};
+
+	PublicCoin::PublicCoin(const Params* p, const CBigNum& coin, const CoinDenomination d):
+	params(p), value(coin), denomination(d) {
+	};
+
+	bool PublicCoin::validate() const {
+		if (this->params->accumulatorParams.minCoinValue >= value) {
+			return false;
+		}
+		if (this->params->accumulatorParams.maxCoinValue <= value) {
+			return false;
+		}
+		if (!value.isPrime(params->zkp_iterations)) {
+			return false;
+		}
+		return true;
+	}
+
+	PrivateCoin::PrivateCoin(const Params* p, const CoinDenomination denomination):
+	params(p), publicCoin(p) {
+		if (!this->params->initialized) {
+			throw std::runtime_error("PrivateCoin: parameters not initialized");
+		}
+
+		this->denomination = denomination;
+		this->serialNumber = CBigNum::randBignum(this->params->coinCommitmentParams.groupOrder);
+		this->randomness = CBigNum::randBignum(this->params->coinCommitmentParams.groupOrder);
+
+		this->commitment = Commitment(&this->params->coinCommitmentParams,
+									  this->serialNumber,
+								this->randomness);
+
+		this->publicCoin = PublicCoin(p, this->commitment.getCommitmentValue(), denomination);
+	}
+
+	const PublicCoin& PrivateCoin::getPublicCoin() const {
+		return this->publicCoin;
+	}
+
+	const CBigNum& PrivateCoin::getSerialNumber() const {
+		return this->serialNumber;
+	}
+
+	const CBigNum& PrivateCoin::getRandomness() const {
+		return this->randomness;
+	}
+
+	const unsigned char* PrivateCoin::getEcdsaSecretKey() const {
+		return this->ecdsaSecretKey;
+	}
+
 	vector<unsigned char> EncryptSerialNumber(const CBigNum& serialNumber, const unsigned char* key)
 	{
 		vector<unsigned char> ciphertext;
 
-		// AGGIUNGI: Inizializza OpenSSL 3.x
+		// AGGIUNTO: Inizializza OpenSSL 3.x
 		#if OPENSSL_VERSION_NUMBER >= 0x30000000L
 		init_openssl_3_if_needed();
 		#endif
 
-		// SOSTITUISCI: EVP_CIPHER_CTX ctx; -> EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+		// MODIFICATO: Nuova API EVP
 		EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 		if (!ctx) {
 			throw runtime_error("EncryptSerialNumber: EVP_CIPHER_CTX_new failed");
@@ -47,9 +103,11 @@ namespace libzerocoin {
 
 		try {
 			unsigned char iv[16];
+			#if OPENSSL_VERSION_NUMBER >= 0x30000000L
+			init_openssl_3_if_needed();
+			#endif
 			RAND_bytes(iv, sizeof(iv));
 
-			// RIMANE INVARIATO:
 			if (EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv) != 1) {
 				throw runtime_error("EncryptSerialNumber: EVP_EncryptInit_ex failed");
 			}
@@ -72,7 +130,7 @@ namespace libzerocoin {
 			ciphertext.resize(out_len);
 			ciphertext.insert(ciphertext.begin(), iv, iv + sizeof(iv));
 
-			// SOSTITUISCI: EVP_CIPHER_CTX_cleanup(&ctx); -> EVP_CIPHER_CTX_free(ctx);
+			// MODIFICATO: Nuova API per liberare risorse
 			EVP_CIPHER_CTX_free(ctx);
 		} catch (...) {
 			EVP_CIPHER_CTX_free(ctx);
@@ -82,14 +140,13 @@ namespace libzerocoin {
 		return ciphertext;
 	}
 
-	// MODIFICA ANCHE: DecryptSerialNumber - stesso principio
 	CBigNum DecryptSerialNumber(const vector<unsigned char>& ciphertext, const unsigned char* key)
 	{
 		if (ciphertext.size() < 16) {
 			throw runtime_error("DecryptSerialNumber: ciphertext too short");
 		}
 
-		// AGGIUNGI: Inizializza OpenSSL 3.x
+		// AGGIUNTO: Inizializza OpenSSL 3.x
 		#if OPENSSL_VERSION_NUMBER >= 0x30000000L
 		init_openssl_3_if_needed();
 		#endif
@@ -97,7 +154,7 @@ namespace libzerocoin {
 		unsigned char iv[16];
 		memcpy(iv, &ciphertext[0], sizeof(iv));
 
-		// SOSTITUISCI: EVP_CIPHER_CTX ctx; -> EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+		// MODIFICATO: Nuova API EVP
 		EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
 		if (!ctx) {
 			throw runtime_error("DecryptSerialNumber: EVP_CIPHER_CTX_new failed");
@@ -127,7 +184,7 @@ namespace libzerocoin {
 			CBigNum serialNumber;
 			serialNumber.setvch(plaintext);
 
-			// SOSTITUISCI: EVP_CIPHER_CTX_cleanup(&ctx); -> EVP_CIPHER_CTX_free(ctx);
+			// MODIFICATO: Nuova API per liberare risorse
 			EVP_CIPHER_CTX_free(ctx);
 			return serialNumber;
 		} catch (...) {
@@ -136,5 +193,61 @@ namespace libzerocoin {
 		}
 	}
 
-	// ... resto del file invariato ...
+	vector<unsigned char> PrivateCoin::serialize() const
+	{
+		vector<unsigned char> buffer;
+		buffer.push_back((unsigned char)this->denomination);
+
+		vector<unsigned char> serialBytes = this->serialNumber.getvch();
+		buffer.insert(buffer.end(), serialBytes.begin(), serialBytes.end());
+
+		vector<unsigned char> randomBytes = this->randomness.getvch();
+		buffer.insert(buffer.end(), randomBytes.begin(), randomBytes.end());
+
+		buffer.push_back(0xFF);
+
+		return buffer;
+	}
+
+	PrivateCoin PrivateCoin::deserialize(const Params* params, const vector<unsigned char>& buffer)
+	{
+		if (buffer.empty()) {
+			throw runtime_error("PrivateCoin::deserialize: empty buffer");
+		}
+
+		CoinDenomination denomination = (CoinDenomination)buffer[0];
+
+		size_t sep_pos = 0;
+		for (size_t i = 1; i < buffer.size(); i++) {
+			if (buffer[i] == 0xFF) {
+				sep_pos = i;
+				break;
+			}
+		}
+
+		if (sep_pos == 0 || sep_pos >= buffer.size() - 1) {
+			throw runtime_error("PrivateCoin::deserialize: invalid format");
+		}
+
+		vector<unsigned char> serialBytes(buffer.begin() + 1, buffer.begin() + sep_pos);
+		CBigNum serialNumber;
+		serialNumber.setvch(serialBytes);
+
+		vector<unsigned char> randomBytes(buffer.begin() + sep_pos + 1, buffer.end());
+		CBigNum randomness;
+		randomness.setvch(randomBytes);
+
+		PrivateCoin coin(params, denomination);
+		coin.serialNumber = serialNumber;
+		coin.randomness = randomness;
+
+		coin.commitment = Commitment(&params->coinCommitmentParams,
+									 serialNumber,
+							   randomness);
+
+		coin.publicCoin = PublicCoin(params, coin.commitment.getCommitmentValue(), denomination);
+
+		return coin;
+	}
+
 } // namespace libzerocoin

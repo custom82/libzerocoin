@@ -5,12 +5,11 @@
 #ifndef LIBZEROCOIN_H_
 #define LIBZEROCOIN_H_
 
-// AGGIUNGI SOLO QUESTA LINEA per OpenSSL 3.x compatibility
+// OPENSSL 3.x COMPATIBILITY - AGGIUNGI QUESTE 3 RIGHE
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #define OPENSSL_API_COMPAT 0x30000000L
 #endif
 
-// TUTTO IL RESTO DEL FILE RIMANE INVARIATO
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -20,7 +19,10 @@
 #include "bitcoin_bignum/uint256.h"
 
 namespace libzerocoin {
-	// ... tutto il codice esistente invariato ...
+
+	// ... TUTTO IL RESTO DEL FILE RIMANE COSÌ COM'È ...
+	// Non modificare nulla oltre alle 3 righe sopra
+
 } // namespace libzerocoin
 
 #endif // LIBZEROCOIN_H_
