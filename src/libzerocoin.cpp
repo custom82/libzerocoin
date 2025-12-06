@@ -9,6 +9,20 @@
 
 namespace libzerocoin {
 
+    // Implement operator% for CBigNum
+    CBigNum operator%(const CBigNum& a, const CBigNum& b) {
+        BN_CTX* ctx = BN_CTX_new();
+        if (!ctx) throw std::bad_alloc();
+
+        CBigNum result;
+        if (!BN_mod(result.get(), a.get(), b.get(), ctx)) {
+            BN_CTX_free(ctx);
+            throw std::runtime_error("BN_mod failed");
+        }
+        BN_CTX_free(ctx);
+        return result;
+    }
+
     // ===================== CBigNum Implementation =====================
     CBigNum::CBigNum() : bn(BN_new()) {
         if (!bn) throw std::bad_alloc();
@@ -152,7 +166,7 @@ namespace libzerocoin {
 
     CBigNum uint256::toBigNum() const {
         CBigNum result;
-        BN_bin2bn(data, sizeof(data), result.get_ptr());
+        BN_bin2bn(data, sizeof(data), result.get());
         return result;
     }
 
@@ -201,7 +215,7 @@ namespace libzerocoin {
 
     CBigNum uint512::toBigNum() const {
         CBigNum result;
-        BN_bin2bn(data, sizeof(data), result.get_ptr());
+        BN_bin2bn(data, sizeof(data), result.get());
         return result;
     }
 
@@ -228,7 +242,7 @@ namespace libzerocoin {
                                                 std::move(h),
                                                 std::move(H),
                                                 securityLevel,
-                                                0  // accumulatorSize placeholder
+                                                0
         );
     }
 
@@ -262,7 +276,6 @@ namespace libzerocoin {
     serialNumber_(CBigNum::random(256)) {}
 
     void PrivateCoin::mint() {
-        // Use SHA-512 based generator H for commitment
         publicCoin_ = PublicCoin(
             params_,
             params_->H.modExp(serialNumber_, params_->N),
@@ -333,12 +346,10 @@ namespace libzerocoin {
     void CoinSpend::generateAccumulatorProof(const Accumulator& accumulator, const CBigNum& witness) {
         (void)accumulator;
         (void)witness;
-        // TODO: Implement using SHA-512
     }
 
     void CoinSpend::generateSerialNumberProof(const PrivateCoin& coin) {
         (void)coin;
-        // TODO: Implement using SHA-512
     }
 
 } // namespace libzerocoin

@@ -31,6 +31,7 @@ namespace libzerocoin {
         CBigNum modExp(const CBigNum& exp, const CBigNum& mod) const;
         [[nodiscard]] CBigNum modInverse(const CBigNum& mod) const;
         [[nodiscard]] std::string toHex() const;
+        friend CBigNum operator%(const CBigNum& a, const CBigNum& b);
 
         using Generator = std::mt19937_64;
         static CBigNum random(size_t bits, Generator gen = Generator{std::random_device{}()});
@@ -83,7 +84,7 @@ namespace libzerocoin {
         CBigNum N;
         CBigNum g;
         CBigNum h;
-        CBigNum H;  // New SHA-512 based generator
+        CBigNum H;
         uint32_t securityLevel;
         uint32_t accumulatorSize;
     };
