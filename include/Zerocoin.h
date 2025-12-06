@@ -1,27 +1,26 @@
 #ifndef ZEROCOIN_H
 #define ZEROCOIN_H
 
-#include "Accumulator.h"
+#include "zerocoin_defs.h"
 
 namespace libzerocoin {
 
-	class ZerocoinParams {
-	public:
-		const IntegerGroupParams* groupParams;
-		const Bignum& accumulatorModulus;
-	};
+class PrivateCoin {
+public:
+    PrivateCoin(const ZerocoinParams* p, const CBigNum& coinValue);
 
-	class PrivateCoin {
-	public:
-		PrivateCoin(const ZerocoinParams* p, const CBigNum& coinValue);
-		void Serialize(Stream& s) const;
-		void Unserialize(Stream& s);
+    const PublicCoin& getPublicCoin() const;
+    const CBigNum& getSerialNumber() const;
+    const CBigNum& getRandomness() const;
+    const unsigned char* getEcdsaSecretKey() const;
 
-	private:
-		const ZerocoinParams* params;
-		CBigNum value;
-	};
+private:
+    const ZerocoinParams* params;
+    CBigNum serialNumber;
+    CBigNum randomness;
+    unsigned char ecdsaSecretKey[32];
+};
 
-}
+} // namespace libzerocoin
 
-#endif // ZEROCOIN_H
+#endif
