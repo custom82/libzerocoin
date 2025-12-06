@@ -150,6 +150,12 @@ namespace libzerocoin {
         return ss.str();
     }
 
+    CBigNum uint256::toBigNum() const {
+        CBigNum result;
+        BN_bin2bn(data, sizeof(data), result.get_ptr());
+        return result;
+    }
+
     // ===================== uint512 Implementation =====================
     uint512::uint512(std::span<const uint8_t> bytes) {
         if (bytes.size() != 64) {
@@ -193,6 +199,12 @@ namespace libzerocoin {
         return ss.str();
     }
 
+    CBigNum uint512::toBigNum() const {
+        CBigNum result;
+        BN_bin2bn(data, sizeof(data), result.get_ptr());
+        return result;
+    }
+
     // ===================== ZerocoinParams Implementation =====================
     ZerocoinParams::ZerocoinParams(CBigNum N, CBigNum g, CBigNum h, CBigNum H,
                                    uint32_t securityLevel, uint32_t accumulatorSize)
@@ -200,18 +212,15 @@ namespace libzerocoin {
     securityLevel(securityLevel), accumulatorSize(accumulatorSize) {}
 
     std::unique_ptr<ZerocoinParams> ZerocoinParams::generate(uint32_t securityLevel, size_t rsaBits) {
-        // Step 1: Generate RSA modulus
         CBigNum N = CBigNum::random(rsaBits);
 
-        // Step 2: Generate generators using SHA-512
         const auto g_str = "Generator g for Zerocoin, security: " + std::to_string(securityLevel);
         const auto h_str = "Generator h for Zerocoin, security: " + std::to_string(securityLevel);
         const auto H_str = "Generator H (SHA-512) for Zerocoin, security: " + std::to_string(securityLevel);
 
-        // Derive generators from hashes
-        CBigNum g = uint512::hash(g_str).to512BigNum() % N;
-        CBigNum h = uint512::hash(h_str).to512BigNum() % N;
-        CBigNum H = uint512::hash(H_str).to512BigNum() % N;
+        CBigNum g = uint512::hash(g_str).toBigNum() % N;
+        CBigNum h = uint512::hash(h_str).toBigNum() % N;
+        CBigNum H = uint512::hash(H_str).toBigNum() % N;
 
         return std::make_unique<ZerocoinParams>(
             std::move(N),

@@ -46,11 +46,12 @@ namespace libzerocoin {
 
         static uint256 hash(std::string_view str);
         [[nodiscard]] std::string toHex() const;
+        [[nodiscard]] CBigNum toBigNum() const;
     };
 
     class uint512 {
     private:
-        uint8_t data[64];  // 512 bits
+        uint8_t data[64];
     public:
         constexpr uint512() : data{0} {}
         explicit uint512(std::span<const uint8_t> bytes);
@@ -58,6 +59,7 @@ namespace libzerocoin {
 
         static uint512 hash(std::string_view str);
         [[nodiscard]] std::string toHex() const;
+        [[nodiscard]] CBigNum toBigNum() const;
     };
 
     enum CoinDenomination {
@@ -81,7 +83,7 @@ namespace libzerocoin {
         CBigNum N;
         CBigNum g;
         CBigNum h;
-        CBigNum H;  // New generator derived from SHA-512
+        CBigNum H;  // New SHA-512 based generator
         uint32_t securityLevel;
         uint32_t accumulatorSize;
     };
