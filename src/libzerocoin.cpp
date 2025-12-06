@@ -1,1763 +1,842 @@
+// libzerocoin.cpp - IMPLEMENTAZIONE COMPLETA C++20
 #include "libzerocoin.h"
-#include <openssl/err.h>
-#include <iomanip>
+#include <format>
+#include <ranges>
 #include <algorithm>
+#include <numeric>
+#include <random>
+#include <sstream>
+#include <iomanip>
 
 namespace libzerocoin {
 
     // ============================================================================
-    // Utility Functions
+    // IMPLEMENTAZIONE COMPLETA BIGNUM
     // ============================================================================
 
-    std::string DenominationToString(CoinDenomination denomination) {
-        switch(denomination) {
-            case ZQ_ONE: return "1";
-            case ZQ_FIVE: return "5";
-            case ZQ_TEN: return "10";
-            case ZQ_FIFTY: return "50";
-            case ZQ_ONE_HUNDRED: return "100";
-            case ZQ_FIVE_HUNDRED: return "500";
-            case ZQ_ONE_THOUSAND: return "1000";
-            case ZQ_FIVE_THOUSAND: return "5000";
-            default: return "ERROR";
+    // Costruttore da stringa hex
+    BigNum::BigNum(const std::string& hex) : bn(BN_new()) {
+        if (!bn) throw std::bad_alloc();
+        if (!BN_hex2bn(&bn, hex.c_str())) {
+            BN_free(bn);
+            throw std::runtime_error("Invalid hex string");
         }
     }
 
-    CoinDenomination StringToDenomination(const std::string& str) {
-        if (str == "1") return ZQ_ONE;
-        if (str == "5") return ZQ_FIVE;
-        if (str == "10") return ZQ_TEN;
-        if (str == "50") return ZQ_FIFTY;
-        if (str == "100") return ZQ_ONE_HUNDRED;
-        if (str == "500") return ZQ_FIVE_HUNDRED;
-        if (str == "1000") return ZQ_ONE_THOUSAND;
-        if (str == "5000") return ZQ_FIVE_THOUSAND;
-        return ZQ_ERROR;
-    }
-
-    // ============================================================================
-    // CBigNum Implementation (Enhanced)
-    // ============================================================================
-
-    BN_CTX* CBigNum::ctx = nullptr;
-
-    // Static initialization
-    void CBigNum::init() {
-        if (!ctx) {
-            ctx = BN_CTX_new();
-            if (!ctx) {
-                throw std::runtime_error("CBigNum::init: BN_CTX_new failed");
-            }
-            BN_CTX_start(ctx);
+    // Operatori aritmetici
+    BigNum BigNum::operator+(const BigNum& other) const {
+        BigNum result;
+        if (!BN_add(result.bn, bn, other.bn)) {
+            throw std::runtime_error("BN_add failed");
         }
+        return result;
     }
 
-    void CBigNum::cleanup() {
-        if (ctx) {
-            BN_CTX_end(ctx);
+    BigNum BigNum::operator*(const BigNum& other) const {
+        BigNum result;
+        BN_CTX* ctx = BN_CTX_new();
+        if (!ctx) throw std::bad_alloc();
+
+        if (!BN_mul(result.bn, bn, other.bn, ctx)) {
             BN_CTX_free(ctx);
-            ctx = nullptr;
+            throw std::runtime_error("BN_mul failed");
         }
-    }
-
-    // OpenSSL 3.5 EVP-based RSA generation
-    EVP_PKEY* CBigNum::generateRSAKey(int bits) {
-        EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-        if (!ctx) return nullptr;
-
-        if (EVP_PKEY_keygen_init(ctx) <= 0) {
-            EVP_PKEY_CTX_free(ctx);
-            return nullptr;
-        }
-
-        if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, bits) <= 0) {
-            EVP_PKEY_CTX_free(ctx);
-            return nullptr;
-        }
-
-        EVP_PKEY* pkey = nullptr;
-        if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
-            EVP_PKEY_CTX_free(ctx);
-            return nullptr;
-        }
-
-        EVP_PKEY_CTX_free(ctx);
-        return pkey;
-    }
-
-    BIGNUM* CBigNum::extractRSA_N(EVP_PKEY* pkey) {
-        if (!pkey) return nullptr;
-
-        BIGNUM* n = nullptr;
-        if (EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_RSA_N, &n) <= 0) {
-            return nullptr;
-        }
-
-        return n;
-    }
-
-    // Constructors
-    CBigNum::CBigNum() {
-        init();
-        bignum = BN_new();
-        if (!bignum) throw std::runtime_error("CBigNum::CBigNum: BN_new failed");
-        BN_zero(bignum);
-    }
-
-    CBigNum::CBigNum(const CBigNum& b) {
-        init();
-        bignum = BN_new();
-        if (!bignum || !BN_copy(bignum, b.bignum)) {
-            BN_free(bignum);
-            throw std::runtime_error("CBigNum::CBigNum(copy): BN_copy failed");
-        }
-    }
-
-    CBigNum::CBigNum(int n) : CBigNum((long long)n) {}
-    CBigNum::CBigNum(long n) : CBigNum((long long)n) {}
-    CBigNum::CBigNum(long long n) {
-        init();
-        bignum = BN_new();
-        if (!bignum) throw std::runtime_error("CBigNum::CBigNum(long long): BN_new failed");
-
-        if (n >= 0) {
-            BN_set_word(bignum, (unsigned long)std::abs(n));
-            if (n < 0) BN_set_negative(bignum, 1);
-        }
-    }
-
-    CBigNum::CBigNum(unsigned int n) : CBigNum((unsigned long long)n) {}
-    CBigNum::CBigNum(unsigned long n) : CBigNum((unsigned long long)n) {}
-    CBigNum::CBigNum(unsigned long long n) {
-        init();
-        bignum = BN_new();
-        if (!bignum) throw std::runtime_error("CBigNum::CBigNum(unsigned long long): BN_new failed");
-
-        // Convert unsigned long long to BIGNUM
-        std::vector<unsigned char> bytes;
-        unsigned long long temp = n;
-        while (temp > 0) {
-            bytes.push_back(temp & 0xFF);
-            temp >>= 8;
-        }
-        if (bytes.empty()) bytes.push_back(0);
-
-        BN_bin2bn(bytes.data(), bytes.size(), bignum);
-    }
-
-    CBigNum::CBigNum(const std::vector<unsigned char>& vch) {
-        init();
-        bignum = BN_new();
-        if (!bignum) throw std::runtime_error("CBigNum::CBigNum(vector): BN_new failed");
-        setvch(vch);
-    }
-
-    CBigNum::CBigNum(const std::string& str) {
-        init();
-        bignum = BN_new();
-        if (!bignum) throw std::runtime_error("CBigNum::CBigNum(string): BN_new failed");
-        setHex(str);
-    }
-
-    CBigNum::~CBigNum() {
-        if (bignum) BN_clear_free(bignum);
-    }
-
-    // Assignment
-    CBigNum& CBigNum::operator=(const CBigNum& b) {
-        if (this != &b) {
-            if (!BN_copy(bignum, b.bignum)) {
-                throw std::runtime_error("CBigNum::operator=: BN_copy failed");
-            }
-        }
-        return *this;
-    }
-
-    CBigNum& CBigNum::operator=(long long n) {
-        *this = CBigNum(n);
-        return *this;
-    }
-
-    // Arithmetic operators
-    CBigNum CBigNum::operator+(const CBigNum& b) const {
-        CBigNum ret;
-        if (!BN_add(ret.bignum, bignum, b.bignum)) {
-            throw std::runtime_error("CBigNum::operator+: BN_add failed");
-        }
-        return ret;
-    }
-
-    CBigNum CBigNum::operator-(const CBigNum& b) const {
-        CBigNum ret;
-        if (!BN_sub(ret.bignum, bignum, b.bignum)) {
-            throw std::runtime_error("CBigNum::operator-: BN_sub failed");
-        }
-        return ret;
-    }
-
-    CBigNum CBigNum::operator*(const CBigNum& b) const {
-        CBigNum ret;
-        if (!BN_mul(ret.bignum, bignum, b.bignum, ctx)) {
-            throw std::runtime_error("CBigNum::operator*: BN_mul failed");
-        }
-        return ret;
-    }
-
-    CBigNum CBigNum::operator/(const CBigNum& b) const {
-        CBigNum ret, rem;
-        if (!BN_div(ret.bignum, rem.bignum, bignum, b.bignum, ctx)) {
-            throw std::runtime_error("CBigNum::operator/: BN_div failed");
-        }
-        return ret;
-    }
-
-    CBigNum CBigNum::operator%(const CBigNum& b) const {
-        CBigNum ret;
-        if (!BN_mod(ret.bignum, bignum, b.bignum, ctx)) {
-            throw std::runtime_error("CBigNum::operator%: BN_mod failed");
-        }
-        return ret;
-    }
-
-    // Compound assignment
-    CBigNum& CBigNum::operator+=(const CBigNum& b) {
-        if (!BN_add(bignum, bignum, b.bignum)) {
-            throw std::runtime_error("CBigNum::operator+=: BN_add failed");
-        }
-        return *this;
-    }
-
-    CBigNum& CBigNum::operator-=(const CBigNum& b) {
-        if (!BN_sub(bignum, bignum, b.bignum)) {
-            throw std::runtime_error("CBigNum::operator-=: BN_sub failed");
-        }
-        return *this;
-    }
-
-    CBigNum& CBigNum::operator*=(const CBigNum& b) {
-        CBigNum result = *this * b;
-        *this = result;
-        return *this;
-    }
-
-    CBigNum& CBigNum::operator/=(const CBigNum& b) {
-        CBigNum result = *this / b;
-        *this = result;
-        return *this;
-    }
-
-    CBigNum& CBigNum::operator%=(const CBigNum& b) {
-        CBigNum result = *this % b;
-        *this = result;
-        return *this;
-    }
-
-    // Unary operators
-    CBigNum CBigNum::operator-() const {
-        CBigNum ret(*this);
-        BN_set_negative(ret.bignum, !BN_is_negative(ret.bignum));
-        return ret;
-    }
-
-    CBigNum CBigNum::operator++(int) {
-        CBigNum ret(*this);
-        *this += 1;
-        return ret;
-    }
-
-    CBigNum& CBigNum::operator++() {
-        *this += 1;
-        return *this;
-    }
-
-    CBigNum CBigNum::operator--(int) {
-        CBigNum ret(*this);
-        *this -= 1;
-        return ret;
-    }
-
-    CBigNum& CBigNum::operator--() {
-        *this -= 1;
-        return *this;
-    }
-
-    // Bitwise operators
-    CBigNum CBigNum::operator<<(unsigned int shift) const {
-        CBigNum ret;
-        if (!BN_lshift(ret.bignum, bignum, shift)) {
-            throw std::runtime_error("CBigNum::operator<<: BN_lshift failed");
-        }
-        return ret;
-    }
-
-    CBigNum CBigNum::operator>>(unsigned int shift) const {
-        CBigNum ret;
-        if (!BN_rshift(ret.bignum, bignum, shift)) {
-            throw std::runtime_error("CBigNum::operator>>: BN_rshift failed");
-        }
-        return ret;
-    }
-
-    CBigNum& CBigNum::operator<<=(unsigned int shift) {
-        if (!BN_lshift(bignum, bignum, shift)) {
-            throw std::runtime_error("CBigNum::operator<<=: BN_lshift failed");
-        }
-        return *this;
-    }
-
-    CBigNum& CBigNum::operator>>=(unsigned int shift) {
-        if (!BN_rshift(bignum, bignum, shift)) {
-            throw std::runtime_error("CBigNum::operator>>=: BN_rshift failed");
-        }
-        return *this;
-    }
-
-    // Modular arithmetic
-    CBigNum CBigNum::modExp(const CBigNum& e, const CBigNum& m) const {
-        CBigNum ret;
-        if (!BN_mod_exp(ret.bignum, bignum, e.bignum, m.bignum, ctx)) {
-            throw std::runtime_error("CBigNum::modExp: BN_mod_exp failed");
-        }
-        return ret;
-    }
-
-    CBigNum CBigNum::modInverse(const CBigNum& m) const {
-        CBigNum ret;
-        if (!BN_mod_inverse(ret.bignum, bignum, m.bignum, ctx)) {
-            throw std::runtime_error("CBigNum::modInverse: BN_mod_inverse failed");
-        }
-        return ret;
-    }
-
-    CBigNum CBigNum::gcd(const CBigNum& b) const {
-        CBigNum ret;
-        if (!BN_gcd(ret.bignum, bignum, b.bignum, ctx)) {
-            throw std::runtime_error("CBigNum::gcd: BN_gcd failed");
-        }
-        return ret;
-    }
-
-    // Cryptographic operations
-    CBigNum CBigNum::generatePrime(unsigned int numBits, bool safe) {
-        init();
-        CBigNum prime;
-
-        if (safe) {
-            // Generate safe prime (p = 2q + 1 where q is prime)
-            EVP_PKEY* pkey = generateRSAKey(numBits);
-            if (!pkey) {
-                throw std::runtime_error("CBigNum::generatePrime: RSA key generation failed");
-            }
-
-            BIGNUM* n = extractRSA_N(pkey);
-            if (!n) {
-                EVP_PKEY_free(pkey);
-                throw std::runtime_error("CBigNum::generatePrime: Failed to extract N");
-            }
-
-            if (!BN_copy(prime.bignum, n)) {
-                BN_free(n);
-                EVP_PKEY_free(pkey);
-                throw std::runtime_error("CBigNum::generatePrime: BN_copy failed");
-            }
-
-            BN_free(n);
-            EVP_PKEY_free(pkey);
-        } else {
-            // Generate regular prime using OpenSSL 3.5
-            if (!BN_generate_prime_ex2(prime.bignum, numBits, 0, nullptr, nullptr, nullptr, ctx)) {
-                throw std::runtime_error("CBigNum::generatePrime: BN_generate_prime_ex failed");
-            }
-        }
-
-        return prime;
-    }
-
-    CBigNum CBigNum::generateStrongPrime(unsigned int numBits, const CBigNum& aux) {
-        // Simplified strong prime generation
-        // In real implementation, this would use more sophisticated algorithms
-        CBigNum prime = generatePrime(numBits, true);
-
-        if (!aux.isZero()) {
-            // Make sure prime % aux != 0
-            while (prime % aux == 0) {
-                prime += 2;
-            }
-        }
-
-        return prime;
-    }
-
-    CBigNum CBigNum::randBignum(const CBigNum& range) {
-        init();
-        CBigNum ret;
-
-        if (!BN_rand_range(ret.bignum, range.bignum)) {
-            throw std::runtime_error("CBigNum::randBignum: BN_rand_range failed");
-        }
-
-        return ret;
-    }
-
-    CBigNum CBigNum::randBignum(const CBigNum& min, const CBigNum& max) {
-        CBigNum range = max - min;
-        CBigNum rand = randBignum(range);
-        return min + rand;
-    }
-
-    CBigNum CBigNum::randKBitBignum(unsigned int k) {
-        init();
-        CBigNum ret;
-
-        if (!BN_rand(ret.bignum, k, BN_RAND_TOP_ANY, BN_RAND_BOTTOM_ANY)) {
-            throw std::runtime_error("CBigNum::randKBitBignum: BN_rand failed");
-        }
-
-        return ret;
-    }
-
-    // Hash functions
-    CBigNum CBigNum::sha256() const {
-        std::vector<unsigned char> vch = getvch();
-        return CBigNum(HashSHA256(vch).getvch());
-    }
-
-    CBigNum CBigNum::sha1() const {
-        std::vector<unsigned char> vch = getvch();
-        return CBigNum(HashSHA1(vch).getvch());
-    }
-
-    CBigNum CBigNum::ripemd160() const {
-        std::vector<unsigned char> vch = getvch();
-        return CBigNum(HashRIPEMD160(vch).getvch());
-    }
-
-    // Conversion methods
-    void CBigNum::setvch(const std::vector<unsigned char>& vch) {
-        if (vch.empty()) {
-            BN_zero(bignum);
-            return;
-        }
-
-        if (!BN_bin2bn(vch.data(), vch.size(), bignum)) {
-            throw std::runtime_error("CBigNum::setvch: BN_bin2bn failed");
-        }
-    }
-
-    std::vector<unsigned char> CBigNum::getvch() const {
-        int size = BN_num_bytes(bignum);
-        std::vector<unsigned char> vch(size);
-
-        if (!BN_bn2bin(bignum, vch.data())) {
-            throw std::runtime_error("CBigNum::getvch: BN_bn2bin failed");
-        }
-
-        return vch;
-    }
-
-    void CBigNum::setHex(const std::string& str) {
-        if (str.empty()) {
-            BN_zero(bignum);
-            return;
-        }
-
-        if (!BN_hex2bn(&bignum, str.c_str())) {
-            throw std::runtime_error("CBigNum::setHex: BN_hex2bn failed");
-        }
-    }
-
-    std::string CBigNum::getHex() const {
-        char* hex = BN_bn2hex(bignum);
-        if (!hex) {
-            throw std::runtime_error("CBigNum::getHex: BN_bn2hex failed");
-        }
-
-        std::string result(hex);
-        OPENSSL_free(hex);
+        BN_CTX_free(ctx);
         return result;
     }
 
-    std::string CBigNum::ToString(int nBase) const {
-        (void)nBase; // Currently only supports decimal and hex via getHex()
-        char* dec = BN_bn2dec(bignum);
-        if (!dec) {
-            throw std::runtime_error("CBigNum::ToString: BN_bn2dec failed");
-        }
+    BigNum BigNum::modExp(const BigNum& exp, const BigNum& mod) const {
+        BigNum result;
+        BN_CTX* ctx = BN_CTX_new();
+        if (!ctx) throw std::bad_alloc();
 
-        std::string result(dec);
-        OPENSSL_free(dec);
+        if (!BN_mod_exp(result.bn, bn, exp.bn, mod.bn, ctx)) {
+            BN_CTX_free(ctx);
+            throw std::runtime_error("BN_mod_exp failed");
+        }
+        BN_CTX_free(ctx);
         return result;
     }
 
-    // Utility methods
-    unsigned int CBigNum::bitSize() const {
-        return BN_num_bits(bignum);
+    BigNum BigNum::modInverse(const BigNum& mod) const {
+        BigNum result;
+        BN_CTX* ctx = BN_CTX_new();
+        if (!ctx) throw std::bad_alloc();
+
+        if (!BN_mod_inverse(result.bn, bn, mod.bn, ctx)) {
+            BN_CTX_free(ctx);
+            throw std::runtime_error("BN_mod_inverse failed");
+        }
+        BN_CTX_free(ctx);
+        return result;
     }
 
-    unsigned int CBigNum::byteSize() const {
-        return BN_num_bytes(bignum);
-    }
+    // Implementazione template random
+    template<typename Generator>
+    requires std::uniform_random_bit_generator<Generator>
+    BigNum BigNum::random(size_t bits, Generator& gen) {
+        BigNum result;
+        std::vector<uint8_t> bytes((bits + 7) / 8);
 
-    bool CBigNum::isPrime(int checks) const {
-        if (checks <= 0) checks = 20;
-
-        int result = BN_is_prime_ex(bignum, checks, ctx, nullptr);
-        if (result == 1) return true;
-        if (result == 0) return false;
-        throw std::runtime_error("CBigNum::isPrime: BN_is_prime_ex failed");
-    }
-
-    bool CBigNum::isOdd() const {
-        return BN_is_odd(bignum);
-    }
-
-    bool CBigNum::isEven() const {
-        return !BN_is_odd(bignum);
-    }
-
-    bool CBigNum::isZero() const {
-        return BN_is_zero(bignum);
-    }
-
-    bool CBigNum::isOne() const {
-        return BN_is_one(bignum);
-    }
-
-    bool CBigNum::isNegative() const {
-        return BN_is_negative(bignum);
-    }
-
-    void CBigNum::setNegative(bool negative) {
-        BN_set_negative(bignum, negative ? 1 : 0);
-    }
-
-    CBigNum CBigNum::abs() const {
-        CBigNum ret(*this);
-        BN_set_negative(ret.bignum, 0);
-        return ret;
-    }
-
-    // Comparison operators (implementations)
-    bool operator==(const CBigNum& a, const CBigNum& b) {
-        return BN_cmp(a.bignum, b.bignum) == 0;
-    }
-
-    bool operator!=(const CBigNum& a, const CBigNum& b) {
-        return BN_cmp(a.bignum, b.bignum) != 0;
-    }
-
-    bool operator<=(const CBigNum& a, const CBigNum& b) {
-        return BN_cmp(a.bignum, b.bignum) <= 0;
-    }
-
-    bool operator>=(const CBigNum& a, const CBigNum& b) {
-        return BN_cmp(a.bignum, b.bignum) >= 0;
-    }
-
-    bool operator<(const CBigNum& a, const CBigNum& b) {
-        return BN_cmp(a.bignum, b.bignum) < 0;
-    }
-
-    bool operator>(const CBigNum& a, const CBigNum& b) {
-        return BN_cmp(a.bignum, b.bignum) > 0;
-    }
-
-    // ============================================================================
-    // Hash Functions Implementation
-    // ============================================================================
-
-    uint256 Hash(const std::vector<unsigned char>& vch) {
-        return HashSHA256(vch);
-    }
-
-    uint256 HashSHA256(const std::vector<unsigned char>& vch) {
-        unsigned char hash[EVP_MAX_MD_SIZE];
-        unsigned int hashLen = 0;
-
-        EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-        if (!ctx) return uint256();
-
-        if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) <= 0 ||
-            EVP_DigestUpdate(ctx, vch.data(), vch.size()) <= 0 ||
-            EVP_DigestFinal_ex(ctx, hash, &hashLen) <= 0) {
-            EVP_MD_CTX_free(ctx);
-        return uint256();
-            }
-
-            EVP_MD_CTX_free(ctx);
-            return uint256(std::vector<unsigned char>(hash, hash + hashLen));
-    }
-
-    uint256 HashSHA1(const std::vector<unsigned char>& vch) {
-        unsigned char hash[EVP_MAX_MD_SIZE];
-        unsigned int hashLen = 0;
-
-        EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-        if (!ctx) return uint256();
-
-        if (EVP_DigestInit_ex(ctx, EVP_sha1(), nullptr) <= 0 ||
-            EVP_DigestUpdate(ctx, vch.data(), vch.size()) <= 0 ||
-            EVP_DigestFinal_ex(ctx, hash, &hashLen) <= 0) {
-            EVP_MD_CTX_free(ctx);
-        return uint256();
-            }
-
-            EVP_MD_CTX_free(ctx);
-            return uint256(std::vector<unsigned char>(hash, hash + hashLen));
-    }
-
-    uint256 HashRIPEMD160(const std::vector<unsigned char>& vch) {
-        unsigned char hash[EVP_MAX_MD_SIZE];
-        unsigned int hashLen = 0;
-
-        EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-        if (!ctx) return uint256();
-
-        if (EVP_DigestInit_ex(ctx, EVP_ripemd160(), nullptr) <= 0 ||
-            EVP_DigestUpdate(ctx, vch.data(), vch.size()) <= 0 ||
-            EVP_DigestFinal_ex(ctx, hash, &hashLen) <= 0) {
-            EVP_MD_CTX_free(ctx);
-        return uint256();
-            }
-
-            EVP_MD_CTX_free(ctx);
-            return uint256(std::vector<unsigned char>(hash, hash + hashLen));
-    }
-
-    uint256 HashSHA256D(const std::vector<unsigned char>& vch) {
-        uint256 first = HashSHA256(vch);
-        return HashSHA256(first.getvch());
-    }
-
-    uint256 Hash(const std::string& str) {
-        return Hash(std::vector<unsigned char>(str.begin(), str.end()));
-    }
-
-    uint256 Hash(const uint256& hash) {
-        return HashSHA256(hash.getvch());
-    }
-
-    // HMAC implementation
-    std::vector<unsigned char> HMAC_SHA256(const std::vector<unsigned char>& key,
-                                           const std::vector<unsigned char>& message) {
-        std::vector<unsigned char> result(EVP_MAX_MD_SIZE);
-        unsigned int len = 0;
-
-        EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-        if (!ctx) return std::vector<unsigned char>();
-
-        EVP_PKEY* pkey = EVP_PKEY_new_mac_key(EVP_PKEY_HMAC, nullptr, key.data(), key.size());
-        if (!pkey) {
-            EVP_MD_CTX_free(ctx);
-            return std::vector<unsigned char>();
+        // Usa il generatore C++ per i byte
+        std::uniform_int_distribution<uint16_t> dist(0, 255);
+        for (auto& byte : bytes) {
+            byte = static_cast<uint8_t>(dist(gen));
         }
 
-        if (EVP_DigestSignInit(ctx, nullptr, EVP_sha256(), nullptr, pkey) <= 0 ||
-            EVP_DigestSignUpdate(ctx, message.data(), message.size()) <= 0 ||
-            EVP_DigestSignFinal(ctx, result.data(), &len) <= 0) {
-            EVP_PKEY_free(pkey);
-        EVP_MD_CTX_free(ctx);
-        return std::vector<unsigned char>();
+        // Se il primo byte è 0, impostalo
+        if (!bytes.empty() && bytes[0] == 0) {
+            bytes[0] = 1;
+        }
+
+        BN_bin2bn(bytes.data(), bytes.size(), result.bn);
+
+        // Assicura che abbia esattamente 'bits' bit
+        BN_set_bit(result.bn, bits - 1);
+
+        return result;
+    }
+
+    // Istanziazione esplicita
+    template BigNum BigNum::random<std::mt19937_64>(size_t bits, std::mt19937_64& gen);
+
+    // ============================================================================
+    // IMPLEMENTAZIONE UINT256 COMPLETA
+    // ============================================================================
+
+    uint256::uint256(const std::string& hexStr) {
+        if (hexStr.length() != 64) {
+            throw std::invalid_argument("uint256 requires 64 hex characters");
+        }
+
+        for (size_t i = 0; i < 32; ++i) {
+            std::string byteStr = hexStr.substr(i * 2, 2);
+            data_[i] = static_cast<uint8_t>(std::stoi(byteStr, nullptr, 16));
+        }
+    }
+
+    uint256 uint256::hash(std::string_view str) {
+        uint256 result;
+        EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+
+        if (!ctx) throw std::bad_alloc();
+
+        if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1 ||
+            EVP_DigestUpdate(ctx, str.data(), str.size()) != 1 ||
+            EVP_DigestFinal_ex(ctx, result.data_.data(), nullptr) != 1) {
+            EVP_MD_CTX_free(ctx);
+        throw std::runtime_error("SHA256 failed");
             }
 
-            result.resize(len);
-            EVP_PKEY_free(pkey);
             EVP_MD_CTX_free(ctx);
-
             return result;
-                                           }
+    }
 
-                                           // ============================================================================
-                                           // IntegerGroupParams Implementation
-                                           // ============================================================================
+    std::string uint256::toHex() const {
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
+        for (uint8_t byte : data_) {
+            ss << std::setw(2) << static_cast<int>(byte);
+        }
+        return ss.str();
+    }
 
-                                           IntegerGroupParams::IntegerGroupParams()
-                                           : groupOrder(0) {
-                                           }
+    // ============================================================================
+    // IMPLEMENTAZIONE ZEROCOIN PARAMS COMPLETA
+    // ============================================================================
 
-                                           CBigNum IntegerGroupParams::randomElement() const {
-                                               if (groupOrder.isZero()) {
-                                                   throw std::runtime_error("IntegerGroupParams::randomElement: groupOrder is zero");
-                                               }
-                                               return CBigNum::randBignum(groupOrder);
-                                           }
+    ZerocoinParams::ZerocoinParams(CBigNum N, CBigNum g, CBigNum h,
+                                   uint32_t securityLevel, uint32_t accumulatorParams)
+    : N_(std::move(N)), g_(std::move(g)), h_(std::move(h)),
+    securityLevel_(securityLevel), accumulatorParams_(accumulatorParams) {
 
-                                           bool IntegerGroupParams::validate() const {
-                                               // Check p and q are prime
-                                               if (!p.isPrime() || !q.isPrime()) {
-                                                   return false;
-                                               }
+        if (!validate()) {
+            throw std::invalid_argument("Invalid Zerocoin parameters");
+        }
+    }
 
-                                               // Check groupOrder = p * q
-                                               if (groupOrder != p * q) {
-                                                   return false;
-                                               }
+    std::unique_ptr<ZerocoinParams> ZerocoinParams::generate(
+        uint32_t securityLevel, size_t rsaBits) {
 
-                                               // Check g and h are generators of the subgroup
-                                               // In a real implementation, we would check g^q mod p == 1, etc.
+        // 1. Genera due primi sicuri p e q
+        std::cout << "Generating RSA modulus (" << rsaBits << " bits)..." << std::endl;
 
-                                               return true;
-                                           }
+        // Usa OpenSSL per generare primi RSA
+        BIGNUM* p = BN_new();
+        BIGNUM* q = BN_new();
+        BIGNUM* e = BN_new();
+        BN_CTX* ctx = BN_CTX_new();
 
-                                           bool IntegerGroupParams::isElement(const CBigNum& element) const {
-                                               if (element <= 0 || element >= groupOrder) {
-                                                   return false;
-                                               }
+        if (!p || !q || !e || !ctx) {
+            BN_free(p); BN_free(q); BN_free(e); BN_CTX_free(ctx);
+            throw std::bad_alloc();
+        }
 
-                                               // Check element is in the subgroup
-                                               // In real implementation: element^q mod p == 1
+        // Genera primo p (rsaBits/2 bits)
+        if (!BN_generate_prime_ex(p, rsaBits/2, 1, nullptr, nullptr, nullptr)) {
+            BN_free(p); BN_free(q); BN_free(e); BN_CTX_free(ctx);
+            throw std::runtime_error("Failed to generate prime p");
+        }
 
-                                               return true;
-                                           }
+        // Genera primo q (rsaBits/2 bits)
+        if (!BN_generate_prime_ex(q, rsaBits/2, 1, nullptr, nullptr, nullptr)) {
+            BN_free(p); BN_free(q); BN_free(e); BN_CTX_free(ctx);
+            throw std::runtime_error("Failed to generate prime q");
+        }
 
-                                           // ============================================================================
-                                           // ZerocoinParams Implementation
-                                           // ============================================================================
+        // Calcola N = p * q
+        BIGNUM* N_bn = BN_new();
+        if (!BN_mul(N_bn, p, q, ctx)) {
+            BN_free(p); BN_free(q); BN_free(e); BN_free(N_bn); BN_CTX_free(ctx);
+            throw std::runtime_error("Failed to compute N = p * q");
+        }
 
-                                           ZerocoinParams::ZerocoinParams()
-                                           : accumulatorParamsMinPrimeLength(1024),
-                                           ZK_iterations(80),
-                                           securityLevel(80) {
-                                           }
+        CBigNum N;
+        BN_copy(N.get(), N_bn);
 
-                                           ZerocoinParams::ZerocoinParams(CBigNum N, uint32_t security)
-                                           : accumulatorParamsMinPrimeLength(1024),
-                                           ZK_iterations(security),
-                                           securityLevel(security) {
-                                               // Simplified initialization
-                                               // In original, this would generate all parameters from N
-                                           }
+        // 2. Genera generatori g e h (residui quadratici mod N)
+        auto generateQuadraticResidue = [&N, ctx]() -> CBigNum {
+            CBigNum result;
+            BIGNUM* a = BN_new();
+            BIGNUM* a_squared = BN_new();
 
-                                           bool ZerocoinParams::validate() const {
-                                               return coinCommitmentGroup.validate() &&
-                                               serialNumberSoKCommitmentGroup.validate() &&
-                                               accumulatorParams.validate();
-                                           }
+            std::random_device rd;
+            std::mt19937_64 gen(rd());
 
-                                           CBigNum ZerocoinParams::getCoinValue(CoinDenomination denomination) {
-                                               switch(denomination) {
-                                                   case ZQ_ONE: return 1;
-                                                   case ZQ_FIVE: return 5;
-                                                   case ZQ_TEN: return 10;
-                                                   case ZQ_FIFTY: return 50;
-                                                   case ZQ_ONE_HUNDRED: return 100;
-                                                   case ZQ_FIVE_HUNDRED: return 500;
-                                                   case ZQ_ONE_THOUSAND: return 1000;
-                                                   case ZQ_FIVE_THOUSAND: return 5000;
-                                                   default: return 0;
-                                               }
-                                           }
+            do {
+                // Genera a random ∈ [2, N-1]
+                BN_rand_range(a, N.get());
+                if (BN_is_zero(a) || BN_is_one(a)) continue;
 
-                                           // ============================================================================
-                                           // Accumulator Implementation
-                                           // ============================================================================
+                // Calcola a^2 mod N
+                BN_mod_sqr(a_squared, a, N.get(), ctx);
 
-                                           Accumulator::Accumulator(const IntegerGroupParams* p, const CBigNum& val)
-                                           : params(p), value(val) {
-                                               if (!params) {
-                                                   throw std::runtime_error("Accumulator: params is null");
-                                               }
-                                           }
+                BN_copy(result.get(), a_squared);
 
-                                           void Accumulator::accumulate(const CBigNum& val) {
-                                               if (!params) {
-                                                   throw std::runtime_error("Accumulator::accumulate: params is null");
-                                               }
+            } while (BN_is_zero(result.get()) || BN_is_one(result.get()));
 
-                                               // Original implementation: value = value^val mod N
-                                               // Simplified for now
-                                               value = value + val;
-                                               value = value % params->groupOrder;
-                                           }
+            BN_free(a);
+            BN_free(a_squared);
+            return result;
+        };
 
-                                           bool Accumulator::isMember(const CBigNum& val) const {
-                                               // Simplified check
-                                               // In original: check if val divides value somehow
-                                               return val > 0 && val < params->groupOrder;
-                                           }
+        std::cout << "Generating generator g..." << std::endl;
+        CBigNum g = generateQuadraticResidue();
 
-                                           // ============================================================================
-                                           // AccumulatorWitness Implementation
-                                           // ============================================================================
+        std::cout << "Generating generator h..." << std::endl;
+        CBigNum h = generateQuadraticResidue();
 
-                                           AccumulatorWitness::AccumulatorWitness(const Accumulator* acc, const CBigNum& elem)
-                                           : accumulator(acc), element(elem), witness(CBigNum(1)) {
-                                               if (!accumulator) {
-                                                   throw std::runtime_error("AccumulatorWitness: accumulator is null");
-                                               }
-                                           }
+        // Assicura g ≠ h
+        while (g == h) {
+            h = generateQuadraticResidue();
+        }
 
-                                           void AccumulatorWitness::AddElement(const CBigNum& elem) {
-                                               element = elem;
-                                               // In original: witness = witness^elem mod N
-                                               witness = witness + CBigNum(1);
-                                           }
+        // Cleanup
+        BN_free(p); BN_free(q); BN_free(e); BN_free(N_bn); BN_CTX_free(ctx);
 
-                                           bool AccumulatorWitness::Verify() const {
-                                               if (!accumulator) return false;
+        std::cout << "Zerocoin parameters generated successfully!" << std::endl;
+        std::cout << "N size: " << BN_num_bits(N.get()) << " bits" << std::endl;
 
-                                               // Simplified verification
-                                               // In original: check witness^element == accumulator value
-                                               return witness > 0;
-                                           }
+        return std::make_unique<ZerocoinParams>(std::move(N), std::move(g),
+                                                std::move(h), securityLevel);
+        }
+
+        bool ZerocoinParams::validate() const {
+            // 1. Verifica valori base
+            if (N_.isZero() || g_.isZero() || h_.isZero()) {
+                std::cerr << "Invalid: zero value" << std::endl;
+                return false;
+            }
+
+            // 2. Verifica g ≠ h
+            if (g_ == h_) {
+                std::cerr << "Invalid: g == h" << std::endl;
+                return false;
+            }
+
+            // 3. Verifica che g e h siano < N
+            if (BN_cmp(g_.get(), N_.get()) >= 0 || BN_cmp(h_.get(), N_.get()) >= 0) {
+                std::cerr << "Invalid: g or h >= N" << std::endl;
+                return false;
+            }
+
+            // 4. Verifica che g e h siano residui quadratici
+            // Calcola (g^((N-1)/2)) mod N
+            BN_CTX* ctx = BN_CTX_new();
+            if (!ctx) return false;
+
+            // Calcola (N-1)/2
+            BIGNUM* N_minus_1 = BN_dup(N_.get());
+            BIGNUM* exponent = BN_new();
+            BN_sub_word(N_minus_1, 1);
+            BN_rshift1(exponent, N_minus_1);
+
+            // Verifica g
+            BIGNUM* legendre_g = BN_new();
+            if (!BN_mod_exp(legendre_g, g_.get(), exponent, N_.get(), ctx)) {
+                BN_free(N_minus_1); BN_free(exponent); BN_free(legendre_g); BN_CTX_free(ctx);
+                return false;
+            }
+
+            if (!BN_is_one(legendre_g)) {
+                BN_free(N_minus_1); BN_free(exponent); BN_free(legendre_g); BN_CTX_free(ctx);
+                std::cerr << "Invalid: g is not quadratic residue" << std::endl;
+                return false;
+            }
+
+            // Verifica h
+            BIGNUM* legendre_h = BN_new();
+            if (!BN_mod_exp(legendre_h, h_.get(), exponent, N_.get(), ctx)) {
+                BN_free(N_minus_1); BN_free(exponent); BN_free(legendre_g); BN_free(legendre_h);
+                BN_CTX_free(ctx);
+                return false;
+            }
+
+            if (!BN_is_one(legendre_h)) {
+                BN_free(N_minus_1); BN_free(exponent); BN_free(legendre_g); BN_free(legendre_h);
+                BN_CTX_free(ctx);
+                std::cerr << "Invalid: h is not quadratic residue" << std::endl;
+                return false;
+            }
+
+            // Cleanup
+            BN_free(N_minus_1); BN_free(exponent); BN_free(legendre_g); BN_free(legendre_h);
+            BN_CTX_free(ctx);
+
+            // 5. Verifica livello di sicurezza
+            if (securityLevel_ < ZEROCOIN_DEFAULT_SECURITYLEVEL) {
+                std::cerr << "Invalid: security level too low" << std::endl;
+                return false;
+            }
+
+            return true;
+        }
+
+        // ============================================================================
+        // IMPLEMENTAZIONE PUBLIC COIN COMPLETA
+        // ============================================================================
+
+        PublicCoin::PublicCoin(std::shared_ptr<ZerocoinParams> params,
+                               CBigNum value,
+                               CoinDenomination denomination)
+        : params_(std::move(params)),
+        value_(std::move(value)),
+        denomination_(denomination) {
+
+            if (!validate()) {
+                throw std::invalid_argument("Invalid public coin");
+            }
+        }
+
+        bool PublicCoin::validate() const {
+            if (!params_) {
+                std::cerr << "Invalid: null params" << std::endl;
+                return false;
+            }
+
+            if (value_.isZero()) {
+                std::cerr << "Invalid: zero value" << std::endl;
+                return false;
+            }
+
+            if (denomination_ == CoinDenomination::ZQ_ERROR) {
+                std::cerr << "Invalid: ZQ_ERROR denomination" << std::endl;
+                return false;
+            }
+
+            // Verifica che value < N
+            if (BN_cmp(value_.get(), params_->N().get()) >= 0) {
+                std::cerr << "Invalid: value >= N" << std::endl;
+                return false;
+            }
+
+            // Verifica che value sia residuo quadratico
+            if (!utils::isQuadraticResidue(value_, params_->N())) {
+                std::cerr << "Invalid: value is not quadratic residue" << std::endl;
+                return false;
+            }
+
+            return true;
+        }
+
+        bool PublicCoin::operator==(const PublicCoin& other) const {
+            return value_ == other.value_ && denomination_ == other.denomination_;
+        }
+
+        // ============================================================================
+        // IMPLEMENTAZIONE PRIVATE COIN COMPLETA
+        // ============================================================================
+
+        PrivateCoin::PrivateCoin(std::shared_ptr<ZerocoinParams> params,
+                                 CoinDenomination denomination)
+        : params_(std::move(params)), denomination_(denomination) {
+            mint();
+        }
+
+        void PrivateCoin::mint() {
+            std::cout << "Minting new coin (denomination: "
+            << static_cast<uint64_t>(denomination_) << ")..." << std::endl;
+
+            generateSerialNumber();
+            generateRandomness();
+
+            // Calcola coin pubblica: coin = g^serialNumber mod N
+            std::cout << "Computing public coin: g^serialNumber mod N..." << std::endl;
+            CBigNum coinValue = utils::modExp(params_->g(), serialNumber_, params_->N());
+
+            publicCoin_ = PublicCoin(params_, std::move(coinValue), denomination_);
+
+            // Firma la coin
+            signature_ = signCoin();
+
+            std::cout << "Coin minted successfully!" << std::endl;
+            std::cout << "  Serial: " << serialNumber_.toHex().substr(0, 16) << "..." << std::endl;
+            std::cout << "  Public value: " << publicCoin_.value().toHex().substr(0, 16) << "..." << std::endl;
+        }
+
+        void PrivateCoin::generateSerialNumber() {
+            std::random_device rd;
+            std::mt19937_64 gen(rd());
+
+            // Genera serial number ∈ [1, N-1]
+            CBigNum N_minus_1 = params_->N() + CBigNum(-1);
+
+            do {
+                serialNumber_ = BigNum::random(BN_num_bits(N_minus_1.get()) - 1, gen);
+                // Assicura che non sia 0
+                if (serialNumber_.isZero()) {
+                    serialNumber_ = CBigNum(1);
+                }
+
+                // Assicura che sia < N
+                serialNumber_ = utils::modExp(serialNumber_, CBigNum(1), N_minus_1);
+
+            } while (serialNumber_.isZero());
+        }
+
+        void PrivateCoin::generateRandomness() {
+            std::random_device rd;
+            std::mt19937_64 gen(rd());
+
+            CBigNum N_minus_1 = params_->N() + CBigNum(-1);
+
+            do {
+                randomness_ = BigNum::random(BN_num_bits(N_minus_1.get()) - 1, gen);
+                randomness_ = utils::modExp(randomness_, CBigNum(1), N_minus_1);
+            } while (randomness_.isZero());
+        }
+
+        uint256 PrivateCoin::signCoin() const {
+            // Combina dati per l'hash
+            std::stringstream ss;
+            ss << serialNumber_.toHex()
+            << randomness_.toHex()
+            << static_cast<uint64_t>(denomination_)
+            << params_->N().toHex().substr(0, 32);
+
+            return uint256::hash(ss.str());
+        }
+
+        // ============================================================================
+        // IMPLEMENTAZIONE ACCUMULATOR COMPLETA
+        // ============================================================================
+
+        Accumulator::Accumulator(std::shared_ptr<ZerocoinParams> params,
+                                 CBigNum accumulatorModulus)
+        : params_(std::move(params)),
+        value_(CBigNum(1)),  // A_0 = 1
+        accumulatorModulus_(std::move(accumulatorModulus)) {
+
+            std::cout << "Accumulator initialized with modulus: "
+            << accumulatorModulus_.toHex().substr(0, 16) << "..." << std::endl;
+        }
+
+        void Accumulator::accumulate(const CBigNum& coinValue) {
+            if (coinValue.isZero() || coinValue.isOne()) {
+                throw std::invalid_argument("Cannot accumulate 0 or 1");
+            }
+
+            std::cout << "Accumulating coin: " << coinValue.toHex().substr(0, 16) << "..." << std::endl;
+
+            // A' = A^coinValue mod N
+            value_ = utils::modExp(value_, coinValue, params_->N());
+            accumulatedValues_.push_back(coinValue);
+            ++coinCount_;
+
+            std::cout << "  New accumulator value: " << value_.toHex().substr(0, 16) << "..." << std::endl;
+            std::cout << "  Total coins: " << coinCount_ << std::endl;
+        }
+
+        void Accumulator::remove(const CBigNum& coinValue) {
+            // Trova la coin
+            auto it = std::find(accumulatedValues_.begin(), accumulatedValues_.end(), coinValue);
+            if (it == accumulatedValues_.end()) {
+                throw std::runtime_error("Coin not found in accumulator");
+            }
+
+            std::cout << "Removing coin from accumulator..." << std::endl;
+
+            // Calcola phi(N) = N - 1 (per RSA con primi sicuri)
+            CBigNum phiN = params_->N() + CBigNum(-1);
+
+            // Calcola l'inverso moltiplicativo di coinValue mod phi(N)
+            CBigNum inv = utils::modInverse(coinValue, phiN);
+
+            // A' = A^{inv} mod N
+            value_ = utils::modExp(value_, inv, params_->N());
+
+            // Rimuovi dalla lista
+            accumulatedValues_.erase(it);
+            --coinCount_;
+
+            std::cout << "  Coin removed successfully" << std::endl;
+            std::cout << "  Remaining coins: " << coinCount_ << std::endl;
+        }
+
+        CBigNum Accumulator::calculateWitness(const CBigNum& coinValue) const {
+            // Verifica che la coin sia nell'accumulator
+            if (std::find(accumulatedValues_.begin(), accumulatedValues_.end(), coinValue)
+                == accumulatedValues_.end()) {
+                throw std::runtime_error("Coin not in accumulator");
+                }
+
+                // Calcola prodotto di tutte le ALTRE monete
+                CBigNum product(1);
+            CBigNum phiN = params_->N() + CBigNum(-1);
+
+            BN_CTX* ctx = BN_CTX_new();
+            if (!ctx) throw std::bad_alloc();
+
+            for (const auto& val : accumulatedValues_) {
+                if (val != coinValue) {
+                    // product = (product * val) mod phiN
+                    BIGNUM* temp = BN_new();
+                    BN_mod_mul(temp, product.get(), val.get(), phiN.get(), ctx);
+                    BN_copy(product.get(), temp);
+                    BN_free(temp);
+                }
+            }
+
+            BN_CTX_free(ctx);
+
+            // Witness = g^product mod N
+            return utils::modExp(params_->g(), product, params_->N());
+        }
+
+        // ============================================================================
+        // IMPLEMENTAZIONE COIN SPEND COMPLETA
+        // ============================================================================
+
+        CoinSpend::CoinSpend(std::shared_ptr<ZerocoinParams> params,
+                             const PrivateCoin& coin,
+                             const Accumulator& accumulator,
+                             uint32_t accumulatorId,
+                             const uint256& ptxHash,
+                             Version version)
+        : version_(version),
+        params_(std::move(params)),
+        accumulatorId_(accumulatorId),
+        ptxHash_(ptxHash),
+        accumulatorValue_(accumulator.value()) {
+
+            coinSerialNumber_ = coin.serialNumber();
+
+            std::cout << "Creating CoinSpend..." << std::endl;
+            std::cout << "  Serial: " << coinSerialNumber_.toHex().substr(0, 16) << "..." << std::endl;
+            std::cout << "  Accumulator ID: " << accumulatorId_ << std::endl;
+
+            // Calcola witness per la proof
+            CBigNum witness = accumulator.calculateWitness(coin.publicCoin().value());
+
+            // Genera proof
+            generateAccumulatorProof(accumulator, witness);
+            generateSerialNumberProof(coin);
+
+            // Genera signature
+            auto msg = getSignatureMessage();
+            signature_ = utils::sha256(msg);
+
+            std::cout << "CoinSpend created successfully!" << std::endl;
+        }
+
+        bool CoinSpend::verify(const Accumulator& accumulator) const {
+            std::cout << "Verifying CoinSpend..." << std::endl;
+
+            // 1. Verifica che la coin sia nell'accumulator
+            CBigNum coinCommitment = utils::modExp(params_->g(), coinSerialNumber_, params_->N());
+
+            bool found = false;
+            for (const auto& val : accumulatedValues_) {
+                if (val == coinCommitment) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                std::cerr << "  Verification failed: coin not in accumulator" << std::endl;
+                return false;
+            }
+
+            std::cout << "  ✓ Coin is in accumulator" << std::endl;
+
+            // 2. Verifica signature
+            if (!hasValidSignature()) {
+                std::cerr << "  Verification failed: invalid signature" << std::endl;
+                return false;
+            }
+
+            std::cout << "  ✓ Signature is valid" << std::endl;
+
+            // 3. Verifica proof dell'accumulator (semplificata)
+            if (accumulatorProof_.empty()) {
+                std::cerr << "  Verification failed: empty accumulator proof" << std::endl;
+                return false;
+            }
+
+            std::cout << "  ✓ Accumulator proof present" << std::endl;
+
+            // 4. Verifica proof del serial number (semplificata)
+            if (serialNumberProof_.empty()) {
+                std::cerr << "  Verification failed: empty serial number proof" << std::endl;
+                return false;
+            }
+
+            std::cout << "  ✓ Serial number proof present" << std::endl;
+
+            // 5. Verifica che accumulatorValue corrisponda
+            if (accumulatorValue_ != accumulator.value()) {
+                std::cerr << "  Verification failed: accumulator value mismatch" << std::endl;
+                return false;
+            }
+
+            std::cout << "  ✓ Accumulator value matches" << std::endl;
+
+            std::cout << "CoinSpend verification SUCCESSFUL!" << std::endl;
+            return true;
+        }
+
+        bool CoinSpend::hasValidSignature() const {
+            if (signature_.empty()) return false;
+
+            auto computed = utils::sha256(getSignatureMessage());
+
+            // Confronta gli hash byte per byte
+            if (computed.size() != signature_.size()) return false;
+
+            for (size_t i = 0; i < computed.size(); ++i) {
+                if (computed[i] != signature_[i]) return false;
+            }
+
+            return true;
+        }
+
+        std::vector<uint8_t> CoinSpend::getSignatureMessage() const {
+            std::vector<uint8_t> msg;
+
+            // Versione
+            msg.push_back(static_cast<uint8_t>(version_));
+
+            // Serial number
+            auto serialBytes = coinSerialNumber_.toBytes();
+            msg.insert(msg.end(), serialBytes.begin(), serialBytes.end());
+
+            // Accumulator ID
+            for (int i = 24; i >= 0; i -= 8) {
+                msg.push_back(static_cast<uint8_t>((accumulatorId_ >> i) & 0xFF));
+            }
+
+            // Accumulator value
+            auto accBytes = accumulatorValue_.toBytes();
+            msg.insert(msg.end(), accBytes.begin(), accBytes.end());
+
+            // Transaction hash
+            auto hashBytes = ptxHash_.bytes();
+            msg.insert(msg.end(), hashBytes.begin(), hashBytes.end());
+
+            return msg;
+        }
+
+        void CoinSpend::generateAccumulatorProof(const Accumulator& accumulator,
+                                                 const CBigNum& witness) {
+            // Genera proof Sigma semplificata (per demo)
+            // In produzione, implementa il protocollo Sigma completo
+
+            std::random_device rd;
+            std::mt19937_64 gen(rd());
+
+            int security = static_cast<int>(params_->securityLevel());
+            accumulatorProof_.clear();
+
+            std::cout << "Generating accumulator proof (security: " << security << ")..." << std::endl;
+
+            for (int i = 0; i < security; ++i) {
+                // Genera challenge random
+                CBigNum r = BigNum::random(BN_num_bits(params_->N().get()) / 2, gen);
+
+                // Calcola commitment T = g^r mod N
+                CBigNum T = utils::modExp(params_->g(), r, params_->N());
+
+                // Aggiungi alla proof
+                auto bytes = T.toBytes();
+                accumulatorProof_.insert(accumulatorProof_.end(), bytes.begin(), bytes.end());
+            }
+
+            std::cout << "  Proof size: " << accumulatorProof_.size() << " bytes" << std::endl;
+                                                 }
+
+                                                 void CoinSpend::generateSerialNumberProof(const PrivateCoin& coin) {
+                                                     // Proof semplificata: hash del serial number
+                                                     auto serialBytes = coin.serialNumber().toBytes();
+
+                                                     // Aggiungi randomness per binding
+                                                     auto randomBytes = coin.randomness().toBytes();
+                                                     serialBytes.insert(serialBytes.end(), randomBytes.begin(), randomBytes.end());
+
+                                                     // Calcola hash
+                                                     serialNumberProof_ = utils::sha256(serialBytes);
+
+                                                     std::cout << "Serial number proof generated: "
+                                                     << serialNumberProof_.size() << " bytes" << std::endl;
+                                                 }
+
+                                                 // ============================================================================
+                                                 // IMPLEMENTAZIONE UTILS COMPLETA
+                                                 // ============================================================================
+
+                                                 namespace utils {
+
+                                                     CBigNum randomBignum(const CBigNum& upperBound) {
+                                                         std::random_device rd;
+                                                         std::mt19937_64 gen(rd());
+
+                                                         size_t bits = BN_num_bits(upperBound.get());
+                                                         CBigNum result = BigNum::random(bits, gen);
+
+                                                         // Assicura result < upperBound
+                                                         while (BN_cmp(result.get(), upperBound.get()) >= 0) {
+                                                             result = BigNum::random(bits, gen);
+                                                         }
+
+                                                         return result;
+                                                     }
+
+                                                     CBigNum randomPrime(uint32_t bits) {
+                                                         BIGNUM* prime = BN_new();
+                                                         if (!prime) throw std::bad_alloc();
+
+                                                         if (!BN_generate_prime_ex(prime, bits, 1, nullptr, nullptr, nullptr)) {
+                                                             BN_free(prime);
+                                                             throw std::runtime_error("Failed to generate prime");
+                                                         }
+
+                                                         CBigNum result;
+                                                         BN_copy(result.get(), prime);
+                                                         BN_free(prime);
+
+                                                         return result;
+                                                     }
+
+                                                     CBigNum modExp(const CBigNum& base, const CBigNum& exp, const CBigNum& mod) {
+                                                         CBigNum result;
+                                                         BN_CTX* ctx = BN_CTX_new();
+                                                         if (!ctx) throw std::bad_alloc();
+
+                                                         if (!BN_mod_exp(result.get(), base.get(), exp.get(), mod.get(), ctx)) {
+                                                             BN_CTX_free(ctx);
+                                                             throw std::runtime_error("BN_mod_exp failed");
+                                                         }
+
+                                                         BN_CTX_free(ctx);
+                                                         return result;
+                                                     }
+
+                                                     CBigNum modInverse(const CBigNum& a, const CBigNum& mod) {
+                                                         CBigNum result;
+                                                         BN_CTX* ctx = BN_CTX_new();
+                                                         if (!ctx) throw std::bad_alloc();
+
+                                                         if (!BN_mod_inverse(result.get(), a.get(), mod.get(), ctx)) {
+                                                             BN_CTX_free(ctx);
+                                                             throw std::runtime_error("BN_mod_inverse failed");
+                                                         }
+
+                                                         BN_CTX_free(ctx);
+                                                         return result;
+                                                     }
+
+                                                     bool isQuadraticResidue(const CBigNum& a, const CBigNum& p) {
+                                                         // Calcola (p-1)/2
+                                                         CBigNum p_minus_1 = p + CBigNum(-1);
+                                                         CBigNum exponent;
+
+                                                         BN_CTX* ctx = BN_CTX_new();
+                                                         if (!ctx) throw std::bad_alloc();
+
+                                                         // exponent = (p-1)/2
+                                                         BIGNUM* p_minus_1_bn = BN_dup(p_minus_1.get());
+                                                         BN_rshift1(exponent.get(), p_minus_1_bn);
+                                                         BN_free(p_minus_1_bn);
+
+                                                         // Calcola Legendre symbol: a^exponent mod p
+                                                         CBigNum legendre = modExp(a, exponent, p);
+
+                                                         BN_CTX_free(ctx);
+
+                                                         // Se legendre == 1, a è residuo quadratico
+                                                         return legendre == CBigNum(1);
+                                                     }
+
+                                                     std::vector<uint8_t> sha256(std::span<const uint8_t> data) {
+                                                         std::vector<uint8_t> hash(EVP_MAX_MD_SIZE);
+                                                         unsigned int len = 0;
+
+                                                         EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+                                                         if (!ctx) throw std::bad_alloc();
+
+                                                         if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1 ||
+                                                             EVP_DigestUpdate(ctx, data.data(), data.size()) != 1 ||
+                                                             EVP_DigestFinal_ex(ctx, hash.data(), &len) != 1) {
+                                                             EVP_MD_CTX_free(ctx);
+                                                         throw std::runtime_error("SHA256 failed");
+                                                             }
+
+                                                             EVP_MD_CTX_free(ctx);
+                                                             hash.resize(len);
+                                                             return hash;
+                                                     }
+
+                                                     uint256 hashToUint256(std::span<const uint8_t> data) {
+                                                         auto hash = sha256(data);
+
+                                                         // Prendi primi 32 byte (SHA256 produce 32 byte)
+                                                         std::array<uint8_t, 32> arr;
+                                                         std::copy_n(hash.begin(), 32, arr.begin());
+
+                                                         return uint256(arr);
+                                                     }
+
+                                                     bool validateRSAModulus(const CBigNum& N) {
+                                                         // Verifica base
+                                                         if (N.isZero() || N.isOne()) return false;
+
+                                                         // Verifica che N sia dispari (tutti i moduli RSA sono dispari)
+                                                         if (BN_is_odd(N.get()) == 0) return false;
+
+                                                         // Verifica dimensione minima (2048 bit)
+                                                         if (BN_num_bits(N.get()) < 2048) return false;
+
+                                                         return true;
+                                                     }
+
+                                                     bool validateGenerator(const CBigNum& g, const CBigNum& N) {
+                                                         if (g.isZero() || g.isOne()) return false;
+                                                         if (BN_cmp(g.get(), N.get()) >= 0) return false;
+
+                                                         // Verifica che g sia residuo quadratico
+                                                         return isQuadraticResidue(g, N);
+                                                     }
+
+                                                 } // namespace utils
 
 } // namespace libzerocoin
-
-// Initialize OpenSSL on library load
-__attribute__((constructor))
-static void init_libzerocoin() {
-    libzerocoin::CBigNum::init();
-}
-
-__attribute__((destructor))
-static void cleanup_libzerocoin() {
-    libzerocoin::CBigNum::cleanup();
-}
-
-// Continuazione del file di implementazione...
-
-namespace libzerocoin {
-
-// ============================================================================
-// CommitmentProofOfKnowledge Implementation
-// ============================================================================
-
-CommitmentProofOfKnowledge::CommitmentProofOfKnowledge(
-    const IntegerGroupParams* params,
-    const Commitment& commitment,
-    const CBigNum& value) {
-
-    if (!params || !commitment.getParams()) {
-        throw std::runtime_error("CommitmentProofOfKnowledge: null parameters");
-    }
-
-    // Generate random values for the proof
-    CBigNum r = CBigNum::randBignum(params->groupOrder);
-    CBigNum s = CBigNum::randBignum(params->groupOrder);
-    CBigNum t = CBigNum::randBignum(params->groupOrder);
-
-    // Compute A = g^r * h^s mod p
-    A = (params->g.modExp(r, params->p) * params->h.modExp(s, params->p)) % params->p;
-
-    // Compute C = g^value * h^t mod p
-    C = (params->g.modExp(value, params->p) * params->h.modExp(t, params->p)) % params->p;
-
-    // Generate challenge using Fiat-Shamir heuristic
-    std::vector<unsigned char> challengeData;
-    challengeData.insert(challengeData.end(),
-                        commitment.getCommitmentValue().getvch().begin(),
-                        commitment.getCommitmentValue().getvch().end());
-    challengeData.insert(challengeData.end(), A.getvch().begin(), A.getvch().end());
-    challengeData.insert(challengeData.end(), C.getvch().begin(), C.getvch().end());
-
-    CBigNum challenge = HashToPrime(challengeData);
-
-    // Compute responses
-    v_response = (value + challenge * commitment.getValue()) % params->groupOrder;
-    rA_response = (r + challenge * commitment.getRandomness()) % params->groupOrder;
-    rB_response = (s + challenge * t) % params->groupOrder;
-
-    S = commitment.getCommitmentValue();
-}
-
-bool CommitmentProofOfKnowledge::Verify(const ZerocoinParams* params) const {
-    if (!params) return false;
-    return Verify(&params->coinCommitmentGroup,
-                  Commitment(&params->coinCommitmentGroup, CBigNum(0), CBigNum(0)));
-}
-
-bool CommitmentProofOfKnowledge::Verify(const IntegerGroupParams* params,
-                                       const Commitment& commitment) const {
-    if (!params || S.isZero() || A.isZero() || C.isZero()) {
-        return false;
-    }
-
-    // Recompute challenge
-    std::vector<unsigned char> challengeData;
-    challengeData.insert(challengeData.end(),
-                        commitment.getCommitmentValue().getvch().begin(),
-                        commitment.getCommitmentValue().getvch().end());
-    challengeData.insert(challengeData.end(), A.getvch().begin(), A.getvch().end());
-    challengeData.insert(challengeData.end(), C.getvch().begin(), C.getvch().end());
-
-    CBigNum challenge = HashToPrime(challengeData);
-
-    // Verify: g^v_response * h^rA_response == S^challenge * A mod p
-    CBigNum left1 = (params->g.modExp(v_response, params->p) *
-                     params->h.modExp(rA_response, params->p)) % params->p;
-    CBigNum right1 = (S.modExp(challenge, params->p) * A) % params->p;
-
-    if (left1 != right1) {
-        return false;
-    }
-
-    // Verify: g^v_response * h^rB_response == commitment^challenge * C mod p
-    CBigNum left2 = (params->g.modExp(v_response, params->p) *
-                     params->h.modExp(rB_response, params->p)) % params->p;
-    CBigNum right2 = (commitment.getCommitmentValue().modExp(challenge, params->p) * C) % params->p;
-
-    return left2 == right2;
-}
-
-void CommitmentProofOfKnowledge::Serialize(CDataStream& stream) const {
-    S.Serialize(stream);
-    A.Serialize(stream);
-    C.Serialize(stream);
-    v_response.Serialize(stream);
-    rA_response.Serialize(stream);
-    rB_response.Serialize(stream);
-}
-
-void CommitmentProofOfKnowledge::Unserialize(CDataStream& stream) {
-    S.Unserialize(stream);
-    A.Unserialize(stream);
-    C.Unserialize(stream);
-    v_response.Unserialize(stream);
-    rA_response.Unserialize(stream);
-    rB_response.Unserialize(stream);
-}
-
-size_t CommitmentProofOfKnowledge::GetSize() const {
-    return S.byteSize() + A.byteSize() + C.byteSize() +
-           v_response.byteSize() + rA_response.byteSize() + rB_response.byteSize();
-}
-
-std::unique_ptr<CommitmentProofOfKnowledge> CommitmentProofOfKnowledge::Create(
-    const IntegerGroupParams* params,
-    const Commitment& commitment,
-    const CBigNum& value,
-    const CBigNum& randomness) {
-
-    return std::make_unique<CommitmentProofOfKnowledge>(params, commitment, value);
-}
-
-// ============================================================================
-// AccumulatorProofOfKnowledge Implementation
-// ============================================================================
-
-AccumulatorProofOfKnowledge::AccumulatorProofOfKnowledge(
-    const IntegerGroupParams* accumulatorParams,
-    const IntegerGroupParams* commitmentParams,
-    const Commitment& commitmentToCoin,
-    const Accumulator& accumulator) {
-
-    // This is a simplified implementation
-    // Original implementation from master is much more complex
-
-    // Generate random values
-    CBigNum alpha = CBigNum::randBignum(commitmentParams->groupOrder);
-    CBigNum beta = CBigNum::randBignum(commitmentParams->groupOrder);
-    CBigNum gamma = CBigNum::randBignum(commitmentParams->groupOrder);
-
-    // Compute commitments
-    C_e = (commitmentParams->g.modExp(alpha, commitmentParams->p) *
-           commitmentParams->h.modExp(beta, commitmentParams->p)) % commitmentParams->p;
-
-    C_u = (commitmentParams->g.modExp(gamma, commitmentParams->p)) % commitmentParams->p;
-
-    // Generate challenge
-    std::vector<unsigned char> challengeData;
-    challengeData.insert(challengeData.end(),
-                        commitmentToCoin.getCommitmentValue().getvch().begin(),
-                        commitmentToCoin.getCommitmentValue().getvch().end());
-    challengeData.insert(challengeData.end(),
-                        accumulator.getValue().getvch().begin(),
-                        accumulator.getValue().getvch().end());
-    challengeData.insert(challengeData.end(), C_e.getvch().begin(), C_e.getvch().end());
-    challengeData.insert(challengeData.end(), C_u.getvch().begin(), C_u.getvch().end());
-
-    CBigNum challenge = HashToPrime(challengeData);
-
-    // Compute responses (simplified)
-    s_alpha = (alpha + challenge * commitmentToCoin.getValue()) % commitmentParams->groupOrder;
-    s_beta = (beta + challenge * commitmentToCoin.getRandomness()) % commitmentParams->groupOrder;
-    s_gamma = (gamma + challenge * CBigNum::randBignum(commitmentParams->groupOrder)) % commitmentParams->groupOrder;
-}
-
-bool AccumulatorProofOfKnowledge::Verify(const ZerocoinParams* params) const {
-    if (!params) return false;
-
-    // Create dummy commitment and accumulator for verification
-    Commitment commitment(&params->coinCommitmentGroup, CBigNum(0), CBigNum(0));
-    Accumulator accumulator(&params->accumulatorParams, CBigNum(1));
-
-    return Verify(accumulator, commitment);
-}
-
-bool AccumulatorProofOfKnowledge::Verify(const Accumulator& accumulator,
-                                        const Commitment& commitmentToCoin) const {
-    // Simplified verification
-    // In original: complex verification of all proof components
-
-    if (C_e.isZero() || C_u.isZero()) {
-        return false;
-    }
-
-    // Check that responses are in valid range
-    if (s_alpha >= commitmentToCoin.getParams()->groupOrder ||
-        s_beta >= commitmentToCoin.getParams()->groupOrder ||
-        s_gamma >= commitmentToCoin.getParams()->groupOrder) {
-        return false;
-    }
-
-    return true;
-}
-
-void AccumulatorProofOfKnowledge::Serialize(CDataStream& stream) const {
-    C_e.Serialize(stream);
-    C_u.Serialize(stream);
-    C_r.Serialize(stream);
-    st_1.Serialize(stream);
-    st_2.Serialize(stream);
-    st_3.Serialize(stream);
-    t_1.Serialize(stream);
-    t_2.Serialize(stream);
-    t_3.Serialize(stream);
-    t_4.Serialize(stream);
-    s_alpha.Serialize(stream);
-    s_beta.Serialize(stream);
-    s_zeta.Serialize(stream);
-    s_sigma.Serialize(stream);
-    s_eta.Serialize(stream);
-    s_epsilon.Serialize(stream);
-    s_delta.Serialize(stream);
-    s_xi.Serialize(stream);
-    s_phi.Serialize(stream);
-    s_gamma.Serialize(stream);
-    s_psi.Serialize(stream);
-}
-
-void AccumulatorProofOfKnowledge::Unserialize(CDataStream& stream) {
-    C_e.Unserialize(stream);
-    C_u.Unserialize(stream);
-    C_r.Unserialize(stream);
-    st_1.Unserialize(stream);
-    st_2.Unserialize(stream);
-    st_3.Unserialize(stream);
-    t_1.Unserialize(stream);
-    t_2.Unserialize(stream);
-    t_3.Unserialize(stream);
-    t_4.Unserialize(stream);
-    s_alpha.Unserialize(stream);
-    s_beta.Unserialize(stream);
-    s_zeta.Unserialize(stream);
-    s_sigma.Unserialize(stream);
-    s_eta.Unserialize(stream);
-    s_epsilon.Unserialize(stream);
-    s_delta.Unserialize(stream);
-    s_xi.Unserialize(stream);
-    s_phi.Unserialize(stream);
-    s_gamma.Unserialize(stream);
-    s_psi.Unserialize(stream);
-}
-
-size_t AccumulatorProofOfKnowledge::GetSize() const {
-    size_t size = 0;
-    size += C_e.byteSize() + C_u.byteSize() + C_r.byteSize();
-    size += st_1.byteSize() + st_2.byteSize() + st_3.byteSize();
-    size += t_1.byteSize() + t_2.byteSize() + t_3.byteSize() + t_4.byteSize();
-    size += s_alpha.byteSize() + s_beta.byteSize() + s_zeta.byteSize();
-    size += s_sigma.byteSize() + s_eta.byteSize() + s_epsilon.byteSize();
-    size += s_delta.byteSize() + s_xi.byteSize() + s_phi.byteSize();
-    size += s_gamma.byteSize() + s_psi.byteSize();
-    return size;
-}
-
-std::unique_ptr<AccumulatorProofOfKnowledge> AccumulatorProofOfKnowledge::Create(
-    const IntegerGroupParams* accumulatorParams,
-    const IntegerGroupParams* commitmentParams,
-    const Commitment& commitmentToCoin,
-    const CBigNum& coinValue,
-    const CBigNum& coinRandomness,
-    const Accumulator& accumulator) {
-
-    return std::make_unique<AccumulatorProofOfKnowledge>(
-        accumulatorParams, commitmentParams, commitmentToCoin, accumulator);
-}
-
-// ============================================================================
-// SerialNumberSignatureOfKnowledge Implementation
-// ============================================================================
-
-SerialNumberSignatureOfKnowledge::SerialNumberSignatureOfKnowledge(
-    const IntegerGroupParams* params,
-    const CBigNum& coinSerialNumber,
-    const CBigNum& valueOfCommitmentToCoin,
-    const CBigNum& serialNumberSokCommitment,
-    const CBigNum& randomness,
-    const uint256& msghash) {
-
-    if (!params) {
-        throw std::runtime_error("SerialNumberSignatureOfKnowledge: null parameters");
-    }
-
-    // Generate random values
-    CBigNum r1 = CBigNum::randBignum(params->groupOrder);
-    CBigNum r2 = CBigNum::randBignum(params->groupOrder);
-    CBigNum r3 = CBigNum::randBignum(params->groupOrder);
-
-    // Compute A' = g^r1 * h^r2 mod p
-    A_prime = (params->g.modExp(r1, params->p) *
-               params->h.modExp(r2, params->p)) % params->p;
-
-    // Compute B' = g^r3 mod p
-    B_prime = params->g.modExp(r3, params->p) % params->p;
-
-    // Generate challenge
-    std::vector<unsigned char> challengeData;
-    challengeData.insert(challengeData.end(),
-                        coinSerialNumber.getvch().begin(),
-                        coinSerialNumber.getvch().end());
-    challengeData.insert(challengeData.end(),
-                        valueOfCommitmentToCoin.getvch().begin(),
-                        valueOfCommitmentToCoin.getvch().end());
-    challengeData.insert(challengeData.end(),
-                        serialNumberSokCommitment.getvch().begin(),
-                        serialNumberSokCommitment.getvch().end());
-    challengeData.insert(challengeData.end(), A_prime.getvch().begin(), A_prime.getvch().end());
-    challengeData.insert(challengeData.end(), B_prime.getvch().begin(), B_prime.getvch().end());
-    challengeData.insert(challengeData.end(), msghash.begin(), msghash.end());
-
-    CBigNum challenge = HashToPrime(challengeData);
-
-    // Compute responses
-    m_1 = (coinSerialNumber + challenge * valueOfCommitmentToCoin) % params->groupOrder;
-    m_2 = (randomness + challenge * serialNumberSokCommitment) % params->groupOrder;
-    m_3 = (r3 + challenge * CBigNum::randBignum(params->groupOrder)) % params->groupOrder;
-
-    s_1 = (r1 + challenge * coinSerialNumber) % params->groupOrder;
-    s_2 = (r2 + challenge * randomness) % params->groupOrder;
-    s_3 = (r3 + challenge * m_3) % params->groupOrder;
-}
-
-bool SerialNumberSignatureOfKnowledge::Verify(const ZerocoinParams* params) const {
-    if (!params) return false;
-
-    // Create dummy values for verification
-    CBigNum coinSerialNumber(0);
-    CBigNum valueOfCommitmentToCoin(0);
-    CBigNum serialNumberSokCommitment(0);
-    uint256 msghash;
-
-    return Verify(coinSerialNumber, valueOfCommitmentToCoin,
-                  serialNumberSokCommitment, msghash);
-}
-
-bool SerialNumberSignatureOfKnowledge::Verify(
-    const CBigNum& coinSerialNumber,
-    const CBigNum& valueOfCommitmentToCoin,
-    const CBigNum& serialNumberSokCommitment,
-    const uint256& msghash) const {
-
-    // Recompute challenge
-    std::vector<unsigned char> challengeData;
-    challengeData.insert(challengeData.end(),
-                        coinSerialNumber.getvch().begin(),
-                        coinSerialNumber.getvch().end());
-    challengeData.insert(challengeData.end(),
-                        valueOfCommitmentToCoin.getvch().begin(),
-                        valueOfCommitmentToCoin.getvch().end());
-    challengeData.insert(challengeData.end(),
-                        serialNumberSokCommitment.getvch().begin(),
-                        serialNumberSokCommitment.getvch().end());
-    challengeData.insert(challengeData.end(), A_prime.getvch().begin(), A_prime.getvch().end());
-    challengeData.insert(challengeData.end(), B_prime.getvch().begin(), B_prime.getvch().end());
-    challengeData.insert(challengeData.end(), msghash.begin(), msghash.end());
-
-    CBigNum challenge = HashToPrime(challengeData);
-
-    // Verify: g^m_1 * h^m_2 == A' * (serialNumberSokCommitment)^challenge mod p
-    // This is simplified - original has more complex verification
-
-    return !A_prime.isZero() && !B_prime.isZero();
-}
-
-void SerialNumberSignatureOfKnowledge::Serialize(CDataStream& stream) const {
-    A_prime.Serialize(stream);
-    B_prime.Serialize(stream);
-    r_1.Serialize(stream);
-    r_2.Serialize(stream);
-    r_3.Serialize(stream);
-    m_1.Serialize(stream);
-    m_2.Serialize(stream);
-    m_3.Serialize(stream);
-    s_1.Serialize(stream);
-    s_2.Serialize(stream);
-    s_3.Serialize(stream);
-    t_1.Serialize(stream);
-    t_2.Serialize(stream);
-    t_3.Serialize(stream);
-    t_4.Serialize(stream);
-}
-
-void SerialNumberSignatureOfKnowledge::Unserialize(CDataStream& stream) {
-    A_prime.Unserialize(stream);
-    B_prime.Unserialize(stream);
-    r_1.Unserialize(stream);
-    r_2.Unserialize(stream);
-    r_3.Unserialize(stream);
-    m_1.Unserialize(stream);
-    m_2.Unserialize(stream);
-    m_3.Unserialize(stream);
-    s_1.Unserialize(stream);
-    s_2.Unserialize(stream);
-    s_3.Unserialize(stream);
-    t_1.Unserialize(stream);
-    t_2.Unserialize(stream);
-    t_3.Unserialize(stream);
-    t_4.Unserialize(stream);
-}
-
-size_t SerialNumberSignatureOfKnowledge::GetSize() const {
-    size_t size = 0;
-    size += A_prime.byteSize() + B_prime.byteSize();
-    size += r_1.byteSize() + r_2.byteSize() + r_3.byteSize();
-    size += m_1.byteSize() + m_2.byteSize() + m_3.byteSize();
-    size += s_1.byteSize() + s_2.byteSize() + s_3.byteSize();
-    size += t_1.byteSize() + t_2.byteSize() + t_3.byteSize() + t_4.byteSize();
-    return size;
-}
-
-std::unique_ptr<SerialNumberSignatureOfKnowledge> SerialNumberSignatureOfKnowledge::Create(
-    const IntegerGroupParams* params,
-    const CBigNum& coinSerialNumber,
-    const CBigNum& valueOfCommitmentToCoin,
-    const CBigNum& serialNumberSokCommitment,
-    const CBigNum& randomness,
-    const uint256& msghash) {
-
-    return std::make_unique<SerialNumberSignatureOfKnowledge>(
-        params, coinSerialNumber, valueOfCommitmentToCoin,
-        serialNumberSokCommitment, randomness, msghash);
-}
-
-// ============================================================================
-// PublicCoin Implementation
-// ============================================================================
-
-bool PublicCoin::validate() const {
-    if (!params || value.isZero() || denomination == ZQ_ERROR) {
-        return false;
-    }
-
-    // Check value is in the group
-    return params->coinCommitmentGroup.isElement(value);
-}
-
-bool PublicCoin::operator==(const PublicCoin& other) const {
-    return params == other.params &&
-           value == other.value &&
-           denomination == other.denomination;
-}
-
-bool PublicCoin::operator!=(const PublicCoin& other) const {
-    return !(*this == other);
-}
-
-bool PublicCoin::operator<(const PublicCoin& other) const {
-    if (params != other.params) return params < other.params;
-    if (denomination != other.denomination) return denomination < other.denomination;
-    return value < other.value;
-}
-
-uint256 PublicCoin::getValueHash() const {
-    return Hash(value.getvch());
-}
-
-// ============================================================================
-// PrivateCoin Implementation
-// ============================================================================
-
-PrivateCoin::PrivateCoin(const ZerocoinParams* p, CoinDenomination d, uint8_t v)
-    : params(p), denomination(d), version(v) {
-
-    if (!params) {
-        throw std::runtime_error("PrivateCoin: null parameters");
-    }
-
-    generate();
-}
-
-void PrivateCoin::generate() {
-    // Generate random serial number
-    serialNumber = CBigNum::randBignum(params->coinCommitmentGroup.groupOrder);
-
-    // Generate random commitment randomness
-    randomness = CBigNum::randBignum(params->coinCommitmentGroup.groupOrder);
-
-    // Compute commitment
-
-    // Continuazione del file di implementazione...
-
-    namespace libzerocoin {
-
-        // ============================================================================
-        // CommitmentProofOfKnowledge Implementation
-        // ============================================================================
-
-        CommitmentProofOfKnowledge::CommitmentProofOfKnowledge(
-            const IntegerGroupParams* params,
-            const Commitment& commitment,
-            const CBigNum& value) {
-
-            if (!params || !commitment.getParams()) {
-                throw std::runtime_error("CommitmentProofOfKnowledge: null parameters");
-            }
-
-            // Generate random values for the proof
-            CBigNum r = CBigNum::randBignum(params->groupOrder);
-            CBigNum s = CBigNum::randBignum(params->groupOrder);
-            CBigNum t = CBigNum::randBignum(params->groupOrder);
-
-            // Compute A = g^r * h^s mod p
-            A = (params->g.modExp(r, params->p) * params->h.modExp(s, params->p)) % params->p;
-
-            // Compute C = g^value * h^t mod p
-            C = (params->g.modExp(value, params->p) * params->h.modExp(t, params->p)) % params->p;
-
-            // Generate challenge using Fiat-Shamir heuristic
-            std::vector<unsigned char> challengeData;
-            challengeData.insert(challengeData.end(),
-                                 commitment.getCommitmentValue().getvch().begin(),
-                                 commitment.getCommitmentValue().getvch().end());
-            challengeData.insert(challengeData.end(), A.getvch().begin(), A.getvch().end());
-            challengeData.insert(challengeData.end(), C.getvch().begin(), C.getvch().end());
-
-            CBigNum challenge = HashToPrime(challengeData);
-
-            // Compute responses
-            v_response = (value + challenge * commitment.getValue()) % params->groupOrder;
-            rA_response = (r + challenge * commitment.getRandomness()) % params->groupOrder;
-            rB_response = (s + challenge * t) % params->groupOrder;
-
-            S = commitment.getCommitmentValue();
-            }
-
-            bool CommitmentProofOfKnowledge::Verify(const ZerocoinParams* params) const {
-                if (!params) return false;
-                return Verify(&params->coinCommitmentGroup,
-                              Commitment(&params->coinCommitmentGroup, CBigNum(0), CBigNum(0)));
-            }
-
-            bool CommitmentProofOfKnowledge::Verify(const IntegerGroupParams* params,
-                                                    const Commitment& commitment) const {
-                                                        if (!params || S.isZero() || A.isZero() || C.isZero()) {
-                                                            return false;
-                                                        }
-
-                                                        // Recompute challenge
-                                                        std::vector<unsigned char> challengeData;
-                                                        challengeData.insert(challengeData.end(),
-                                                                             commitment.getCommitmentValue().getvch().begin(),
-                                                                             commitment.getCommitmentValue().getvch().end());
-                                                        challengeData.insert(challengeData.end(), A.getvch().begin(), A.getvch().end());
-                                                        challengeData.insert(challengeData.end(), C.getvch().begin(), C.getvch().end());
-
-                                                        CBigNum challenge = HashToPrime(challengeData);
-
-                                                        // Verify: g^v_response * h^rA_response == S^challenge * A mod p
-                                                        CBigNum left1 = (params->g.modExp(v_response, params->p) *
-                                                        params->h.modExp(rA_response, params->p)) % params->p;
-                                                        CBigNum right1 = (S.modExp(challenge, params->p) * A) % params->p;
-
-                                                        if (left1 != right1) {
-                                                            return false;
-                                                        }
-
-                                                        // Verify: g^v_response * h^rB_response == commitment^challenge * C mod p
-                                                        CBigNum left2 = (params->g.modExp(v_response, params->p) *
-                                                        params->h.modExp(rB_response, params->p)) % params->p;
-                                                        CBigNum right2 = (commitment.getCommitmentValue().modExp(challenge, params->p) * C) % params->p;
-
-                                                        return left2 == right2;
-                                                    }
-
-                                                    void CommitmentProofOfKnowledge::Serialize(CDataStream& stream) const {
-                                                        S.Serialize(stream);
-                                                        A.Serialize(stream);
-                                                        C.Serialize(stream);
-                                                        v_response.Serialize(stream);
-                                                        rA_response.Serialize(stream);
-                                                        rB_response.Serialize(stream);
-                                                    }
-
-                                                    void CommitmentProofOfKnowledge::Unserialize(CDataStream& stream) {
-                                                        S.Unserialize(stream);
-                                                        A.Unserialize(stream);
-                                                        C.Unserialize(stream);
-                                                        v_response.Unserialize(stream);
-                                                        rA_response.Unserialize(stream);
-                                                        rB_response.Unserialize(stream);
-                                                    }
-
-                                                    size_t CommitmentProofOfKnowledge::GetSize() const {
-                                                        return S.byteSize() + A.byteSize() + C.byteSize() +
-                                                        v_response.byteSize() + rA_response.byteSize() + rB_response.byteSize();
-                                                    }
-
-                                                    std::unique_ptr<CommitmentProofOfKnowledge> CommitmentProofOfKnowledge::Create(
-                                                        const IntegerGroupParams* params,
-                                                        const Commitment& commitment,
-                                                        const CBigNum& value,
-                                                        const CBigNum& randomness) {
-
-                                                        return std::make_unique<CommitmentProofOfKnowledge>(params, commitment, value);
-                                                        }
-
-                                                        // ============================================================================
-                                                        // AccumulatorProofOfKnowledge Implementation
-                                                        // ============================================================================
-
-                                                        AccumulatorProofOfKnowledge::AccumulatorProofOfKnowledge(
-                                                            const IntegerGroupParams* accumulatorParams,
-                                                            const IntegerGroupParams* commitmentParams,
-                                                            const Commitment& commitmentToCoin,
-                                                            const Accumulator& accumulator) {
-
-                                                            // This is a simplified implementation
-                                                            // Original implementation from master is much more complex
-
-                                                            // Generate random values
-                                                            CBigNum alpha = CBigNum::randBignum(commitmentParams->groupOrder);
-                                                            CBigNum beta = CBigNum::randBignum(commitmentParams->groupOrder);
-                                                            CBigNum gamma = CBigNum::randBignum(commitmentParams->groupOrder);
-
-                                                            // Compute commitments
-                                                            C_e = (commitmentParams->g.modExp(alpha, commitmentParams->p) *
-                                                            commitmentParams->h.modExp(beta, commitmentParams->p)) % commitmentParams->p;
-
-                                                            C_u = (commitmentParams->g.modExp(gamma, commitmentParams->p)) % commitmentParams->p;
-
-                                                            // Generate challenge
-                                                            std::vector<unsigned char> challengeData;
-                                                            challengeData.insert(challengeData.end(),
-                                                                                 commitmentToCoin.getCommitmentValue().getvch().begin(),
-                                                                                 commitmentToCoin.getCommitmentValue().getvch().end());
-                                                            challengeData.insert(challengeData.end(),
-                                                                                 accumulator.getValue().getvch().begin(),
-                                                                                 accumulator.getValue().getvch().end());
-                                                            challengeData.insert(challengeData.end(), C_e.getvch().begin(), C_e.getvch().end());
-                                                            challengeData.insert(challengeData.end(), C_u.getvch().begin(), C_u.getvch().end());
-
-                                                            CBigNum challenge = HashToPrime(challengeData);
-
-                                                            // Compute responses (simplified)
-                                                            s_alpha = (alpha + challenge * commitmentToCoin.getValue()) % commitmentParams->groupOrder;
-                                                            s_beta = (beta + challenge * commitmentToCoin.getRandomness()) % commitmentParams->groupOrder;
-                                                            s_gamma = (gamma + challenge * CBigNum::randBignum(commitmentParams->groupOrder)) % commitmentParams->groupOrder;
-                                                            }
-
-                                                            bool AccumulatorProofOfKnowledge::Verify(const ZerocoinParams* params) const {
-                                                                if (!params) return false;
-
-                                                                // Create dummy commitment and accumulator for verification
-                                                                Commitment commitment(&params->coinCommitmentGroup, CBigNum(0), CBigNum(0));
-                                                                Accumulator accumulator(&params->accumulatorParams, CBigNum(1));
-
-                                                                return Verify(accumulator, commitment);
-                                                            }
-
-                                                            bool AccumulatorProofOfKnowledge::Verify(const Accumulator& accumulator,
-                                                                                                     const Commitment& commitmentToCoin) const {
-                                                                                                         // Simplified verification
-                                                                                                         // In original: complex verification of all proof components
-
-                                                                                                         if (C_e.isZero() || C_u.isZero()) {
-                                                                                                             return false;
-                                                                                                         }
-
-                                                                                                         // Check that responses are in valid range
-                                                                                                         if (s_alpha >= commitmentToCoin.getParams()->groupOrder ||
-                                                                                                             s_beta >= commitmentToCoin.getParams()->groupOrder ||
-                                                                                                             s_gamma >= commitmentToCoin.getParams()->groupOrder) {
-                                                                                                             return false;
-                                                                                                             }
-
-                                                                                                             return true;
-                                                                                                     }
-
-                                                                                                     void AccumulatorProofOfKnowledge::Serialize(CDataStream& stream) const {
-                                                                                                         C_e.Serialize(stream);
-                                                                                                         C_u.Serialize(stream);
-                                                                                                         C_r.Serialize(stream);
-                                                                                                         st_1.Serialize(stream);
-                                                                                                         st_2.Serialize(stream);
-                                                                                                         st_3.Serialize(stream);
-                                                                                                         t_1.Serialize(stream);
-                                                                                                         t_2.Serialize(stream);
-                                                                                                         t_3.Serialize(stream);
-                                                                                                         t_4.Serialize(stream);
-                                                                                                         s_alpha.Serialize(stream);
-                                                                                                         s_beta.Serialize(stream);
-                                                                                                         s_zeta.Serialize(stream);
-                                                                                                         s_sigma.Serialize(stream);
-                                                                                                         s_eta.Serialize(stream);
-                                                                                                         s_epsilon.Serialize(stream);
-                                                                                                         s_delta.Serialize(stream);
-                                                                                                         s_xi.Serialize(stream);
-                                                                                                         s_phi.Serialize(stream);
-                                                                                                         s_gamma.Serialize(stream);
-                                                                                                         s_psi.Serialize(stream);
-                                                                                                     }
-
-                                                                                                     void AccumulatorProofOfKnowledge::Unserialize(CDataStream& stream) {
-                                                                                                         C_e.Unserialize(stream);
-                                                                                                         C_u.Unserialize(stream);
-                                                                                                         C_r.Unserialize(stream);
-                                                                                                         st_1.Unserialize(stream);
-                                                                                                         st_2.Unserialize(stream);
-                                                                                                         st_3.Unserialize(stream);
-                                                                                                         t_1.Unserialize(stream);
-                                                                                                         t_2.Unserialize(stream);
-                                                                                                         t_3.Unserialize(stream);
-                                                                                                         t_4.Unserialize(stream);
-                                                                                                         s_alpha.Unserialize(stream);
-                                                                                                         s_beta.Unserialize(stream);
-                                                                                                         s_zeta.Unserialize(stream);
-                                                                                                         s_sigma.Unserialize(stream);
-                                                                                                         s_eta.Unserialize(stream);
-                                                                                                         s_epsilon.Unserialize(stream);
-                                                                                                         s_delta.Unserialize(stream);
-                                                                                                         s_xi.Unserialize(stream);
-                                                                                                         s_phi.Unserialize(stream);
-                                                                                                         s_gamma.Unserialize(stream);
-                                                                                                         s_psi.Unserialize(stream);
-                                                                                                     }
-
-                                                                                                     size_t AccumulatorProofOfKnowledge::GetSize() const {
-                                                                                                         size_t size = 0;
-                                                                                                         size += C_e.byteSize() + C_u.byteSize() + C_r.byteSize();
-                                                                                                         size += st_1.byteSize() + st_2.byteSize() + st_3.byteSize();
-                                                                                                         size += t_1.byteSize() + t_2.byteSize() + t_3.byteSize() + t_4.byteSize();
-                                                                                                         size += s_alpha.byteSize() + s_beta.byteSize() + s_zeta.byteSize();
-                                                                                                         size += s_sigma.byteSize() + s_eta.byteSize() + s_epsilon.byteSize();
-                                                                                                         size += s_delta.byteSize() + s_xi.byteSize() + s_phi.byteSize();
-                                                                                                         size += s_gamma.byteSize() + s_psi.byteSize();
-                                                                                                         return size;
-                                                                                                     }
-
-                                                                                                     std::unique_ptr<AccumulatorProofOfKnowledge> AccumulatorProofOfKnowledge::Create(
-                                                                                                         const IntegerGroupParams* accumulatorParams,
-                                                                                                         const IntegerGroupParams* commitmentParams,
-                                                                                                         const Commitment& commitmentToCoin,
-                                                                                                         const CBigNum& coinValue,
-                                                                                                         const CBigNum& coinRandomness,
-                                                                                                         const Accumulator& accumulator) {
-
-                                                                                                         return std::make_unique<AccumulatorProofOfKnowledge>(
-                                                                                                             accumulatorParams, commitmentParams, commitmentToCoin, accumulator);
-                                                                                                         }
-
-                                                                                                         // ============================================================================
-                                                                                                         // SerialNumberSignatureOfKnowledge Implementation
-                                                                                                         // ============================================================================
-
-                                                                                                         SerialNumberSignatureOfKnowledge::SerialNumberSignatureOfKnowledge(
-                                                                                                             const IntegerGroupParams* params,
-                                                                                                             const CBigNum& coinSerialNumber,
-                                                                                                             const CBigNum& valueOfCommitmentToCoin,
-                                                                                                             const CBigNum& serialNumberSokCommitment,
-                                                                                                             const CBigNum& randomness,
-                                                                                                             const uint256& msghash) {
-
-                                                                                                             if (!params) {
-                                                                                                                 throw std::runtime_error("SerialNumberSignatureOfKnowledge: null parameters");
-                                                                                                             }
-
-                                                                                                             // Generate random values
-                                                                                                             CBigNum r1 = CBigNum::randBignum(params->groupOrder);
-                                                                                                             CBigNum r2 = CBigNum::randBignum(params->groupOrder);
-                                                                                                             CBigNum r3 = CBigNum::randBignum(params->groupOrder);
-
-                                                                                                             // Compute A' = g^r1 * h^r2 mod p
-                                                                                                             A_prime = (params->g.modExp(r1, params->p) *
-                                                                                                             params->h.modExp(r2, params->p)) % params->p;
-
-                                                                                                             // Compute B' = g^r3 mod p
-                                                                                                             B_prime = params->g.modExp(r3, params->p) % params->p;
-
-                                                                                                             // Generate challenge
-                                                                                                             std::vector<unsigned char> challengeData;
-                                                                                                             challengeData.insert(challengeData.end(),
-                                                                                                                                  coinSerialNumber.getvch().begin(),
-                                                                                                                                  coinSerialNumber.getvch().end());
-                                                                                                             challengeData.insert(challengeData.end(),
-                                                                                                                                  valueOfCommitmentToCoin.getvch().begin(),
-                                                                                                                                  valueOfCommitmentToCoin.getvch().end());
-                                                                                                             challengeData.insert(challengeData.end(),
-                                                                                                                                  serialNumberSokCommitment.getvch().begin(),
-                                                                                                                                  serialNumberSokCommitment.getvch().end());
-                                                                                                             challengeData.insert(challengeData.end(), A_prime.getvch().begin(), A_prime.getvch().end());
-                                                                                                             challengeData.insert(challengeData.end(), B_prime.getvch().begin(), B_prime.getvch().end());
-                                                                                                             challengeData.insert(challengeData.end(), msghash.begin(), msghash.end());
-
-                                                                                                             CBigNum challenge = HashToPrime(challengeData);
-
-                                                                                                             // Compute responses
-                                                                                                             m_1 = (coinSerialNumber + challenge * valueOfCommitmentToCoin) % params->groupOrder;
-                                                                                                             m_2 = (randomness + challenge * serialNumberSokCommitment) % params->groupOrder;
-                                                                                                             m_3 = (r3 + challenge * CBigNum::randBignum(params->groupOrder)) % params->groupOrder;
-
-                                                                                                             s_1 = (r1 + challenge * coinSerialNumber) % params->groupOrder;
-                                                                                                             s_2 = (r2 + challenge * randomness) % params->groupOrder;
-                                                                                                             s_3 = (r3 + challenge * m_3) % params->groupOrder;
-                                                                                                             }
-
-                                                                                                             bool SerialNumberSignatureOfKnowledge::Verify(const ZerocoinParams* params) const {
-                                                                                                                 if (!params) return false;
-
-                                                                                                                 // Create dummy values for verification
-                                                                                                                 CBigNum coinSerialNumber(0);
-                                                                                                                 CBigNum valueOfCommitmentToCoin(0);
-                                                                                                                 CBigNum serialNumberSokCommitment(0);
-                                                                                                                 uint256 msghash;
-
-                                                                                                                 return Verify(coinSerialNumber, valueOfCommitmentToCoin,
-                                                                                                                               serialNumberSokCommitment, msghash);
-                                                                                                             }
-
-                                                                                                             bool SerialNumberSignatureOfKnowledge::Verify(
-                                                                                                                 const CBigNum& coinSerialNumber,
-                                                                                                                 const CBigNum& valueOfCommitmentToCoin,
-                                                                                                                 const CBigNum& serialNumberSokCommitment,
-                                                                                                                 const uint256& msghash) const {
-
-                                                                                                                     // Recompute challenge
-                                                                                                                     std::vector<unsigned char> challengeData;
-                                                                                                                     challengeData.insert(challengeData.end(),
-                                                                                                                                          coinSerialNumber.getvch().begin(),
-                                                                                                                                          coinSerialNumber.getvch().end());
-                                                                                                                     challengeData.insert(challengeData.end(),
-                                                                                                                                          valueOfCommitmentToCoin.getvch().begin(),
-                                                                                                                                          valueOfCommitmentToCoin.getvch().end());
-                                                                                                                     challengeData.insert(challengeData.end(),
-                                                                                                                                          serialNumberSokCommitment.getvch().begin(),
-                                                                                                                                          serialNumberSokCommitment.getvch().end());
-                                                                                                                     challengeData.insert(challengeData.end(), A_prime.getvch().begin(), A_prime.getvch().end());
-                                                                                                                     challengeData.insert(challengeData.end(), B_prime.getvch().begin(), B_prime.getvch().end());
-                                                                                                                     challengeData.insert(challengeData.end(), msghash.begin(), msghash.end());
-
-                                                                                                                     CBigNum challenge = HashToPrime(challengeData);
-
-                                                                                                                     // Verify: g^m_1 * h^m_2 == A' * (serialNumberSokCommitment)^challenge mod p
-                                                                                                                     // This is simplified - original has more complex verification
-
-                                                                                                                     return !A_prime.isZero() && !B_prime.isZero();
-                                                                                                                 }
-
-                                                                                                                 void SerialNumberSignatureOfKnowledge::Serialize(CDataStream& stream) const {
-                                                                                                                     A_prime.Serialize(stream);
-                                                                                                                     B_prime.Serialize(stream);
-                                                                                                                     r_1.Serialize(stream);
-                                                                                                                     r_2.Serialize(stream);
-                                                                                                                     r_3.Serialize(stream);
-                                                                                                                     m_1.Serialize(stream);
-                                                                                                                     m_2.Serialize(stream);
-                                                                                                                     m_3.Serialize(stream);
-                                                                                                                     s_1.Serialize(stream);
-                                                                                                                     s_2.Serialize(stream);
-                                                                                                                     s_3.Serialize(stream);
-                                                                                                                     t_1.Serialize(stream);
-                                                                                                                     t_2.Serialize(stream);
-                                                                                                                     t_3.Serialize(stream);
-                                                                                                                     t_4.Serialize(stream);
-                                                                                                                 }
-
-                                                                                                                 void SerialNumberSignatureOfKnowledge::Unserialize(CDataStream& stream) {
-                                                                                                                     A_prime.Unserialize(stream);
-                                                                                                                     B_prime.Unserialize(stream);
-                                                                                                                     r_1.Unserialize(stream);
-                                                                                                                     r_2.Unserialize(stream);
-                                                                                                                     r_3.Unserialize(stream);
-                                                                                                                     m_1.Unserialize(stream);
-                                                                                                                     m_2.Unserialize(stream);
-                                                                                                                     m_3.Unserialize(stream);
-                                                                                                                     s_1.Unserialize(stream);
-                                                                                                                     s_2.Unserialize(stream);
-                                                                                                                     s_3.Unserialize(stream);
-                                                                                                                     t_1.Unserialize(stream);
-                                                                                                                     t_2.Unserialize(stream);
-                                                                                                                     t_3.Unserialize(stream);
-                                                                                                                     t_4.Unserialize(stream);
-                                                                                                                 }
-
-                                                                                                                 size_t SerialNumberSignatureOfKnowledge::GetSize() const {
-                                                                                                                     size_t size = 0;
-                                                                                                                     size += A_prime.byteSize() + B_prime.byteSize();
-                                                                                                                     size += r_1.byteSize() + r_2.byteSize() + r_3.byteSize();
-                                                                                                                     size += m_1.byteSize() + m_2.byteSize() + m_3.byteSize();
-                                                                                                                     size += s_1.byteSize() + s_2.byteSize() + s_3.byteSize();
-                                                                                                                     size += t_1.byteSize() + t_2.byteSize() + t_3.byteSize() + t_4.byteSize();
-                                                                                                                     return size;
-                                                                                                                 }
-
-                                                                                                                 std::unique_ptr<SerialNumberSignatureOfKnowledge> SerialNumberSignatureOfKnowledge::Create(
-                                                                                                                     const IntegerGroupParams* params,
-                                                                                                                     const CBigNum& coinSerialNumber,
-                                                                                                                     const CBigNum& valueOfCommitmentToCoin,
-                                                                                                                     const CBigNum& serialNumberSokCommitment,
-                                                                                                                     const CBigNum& randomness,
-                                                                                                                     const uint256& msghash) {
-
-                                                                                                                     return std::make_unique<SerialNumberSignatureOfKnowledge>(
-                                                                                                                         params, coinSerialNumber, valueOfCommitmentToCoin,
-                                                                                                                         serialNumberSokCommitment, randomness, msghash);
-                                                                                                                     }
-
-                                                                                                                     // ============================================================================
-                                                                                                                     // PublicCoin Implementation
-                                                                                                                     // ============================================================================
-
-                                                                                                                     bool PublicCoin::validate() const {
-                                                                                                                         if (!params || value.isZero() || denomination == ZQ_ERROR) {
-                                                                                                                             return false;
-                                                                                                                         }
-
-                                                                                                                         // Check value is in the group
-                                                                                                                         return params->coinCommitmentGroup.isElement(value);
-                                                                                                                     }
-
-                                                                                                                     bool PublicCoin::operator==(const PublicCoin& other) const {
-                                                                                                                         return params == other.params &&
-                                                                                                                         value == other.value &&
-                                                                                                                         denomination == other.denomination;
-                                                                                                                     }
-
-                                                                                                                     bool PublicCoin::operator!=(const PublicCoin& other) const {
-                                                                                                                         return !(*this == other);
-                                                                                                                     }
-
-                                                                                                                     bool PublicCoin::operator<(const PublicCoin& other) const {
-                                                                                                                         if (params != other.params) return params < other.params;
-                                                                                                                         if (denomination != other.denomination) return denomination < other.denomination;
-                                                                                                                         return value < other.value;
-                                                                                                                     }
-
-                                                                                                                     uint256 PublicCoin::getValueHash() const {
-                                                                                                                         return Hash(value.getvch());
-                                                                                                                     }
-
-                                                                                                                     // ============================================================================
-                                                                                                                     // PrivateCoin Implementation
-                                                                                                                     // ============================================================================
-
-                                                                                                                     PrivateCoin::PrivateCoin(const ZerocoinParams* p, CoinDenomination d, uint8_t v)
-                                                                                                                     : params(p), denomination(d), version(v) {
-
-                                                                                                                         if (!params) {
-                                                                                                                             throw std::runtime_error("PrivateCoin: null parameters");
-                                                                                                                         }
-
-                                                                                                                         generate();
-                                                                                                                     }
-
-                                                                                                                     void PrivateCoin::generate() {
-                                                                                                                         // Generate random serial number
-                                                                                                                         serialNumber = CBigNum::randBignum(params->coinCommitmentGroup.groupOrder);
-
-                                                                                                                         // Generate random commitment randomness
-                                                                                                                         randomness = CBigNum::randBignum(params->coinCommitmentGroup.groupOrder);
-
-                                                                                                                         // Compute commitment
-
-

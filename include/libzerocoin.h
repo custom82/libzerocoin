@@ -1,49 +1,38 @@
-#ifndef LIBZEROCOIN_H
-#define LIBZEROCOIN_H
+// libzerocoin.hpp - Versione C++20 corretta
+#pragma once
 
-#include <openssl/bn.h>
 #include <openssl/evp.h>
-#include <openssl/ec.h>
+#include <openssl/bn.h>
+#include <openssl/rand.h>
+#include <openssl/sha.h>
 #include <memory>
 #include <vector>
 #include <string>
-#include <cstdint>
-#include <cstring>
+#include <array>
+#include <span>
+#include <concepts>
+#include <ranges>
+#include <format>
+#include <random>  // AGGIUNTO
+#include <source_location>
 #include <stdexcept>
-#include <sstream>
-#include <iostream>
+#include <cstdint>
+#include <algorithm>
+#include <numeric>
+#include <functional>
 
 namespace libzerocoin {
 
+
     // ============================================================================
-    // Basic Types and Constants
+    // CONSTANTS & CONFIG (C++20 style)
     // ============================================================================
 
-    class uint256;
-    class CBigNum;
-    class IntegerGroupParams;
-    class ZerocoinParams;
-    class Accumulator;
-    class AccumulatorWitness;
-    class AccumulatorProofOfKnowledge;
-    class SerialNumberSignatureOfKnowledge;
-    class CommitmentProofOfKnowledge;
-    class Proof;
-    class PublicCoin;
-    class PrivateCoin;
-    class Commitment;
-    class CoinSpend;
-    class SpendMetaData;
+    constexpr uint32_t ZEROCOIN_DEFAULT_SECURITYLEVEL = 80;
+    constexpr uint32_t ZEROCOIN_VERSION_1 = 1;
+    constexpr uint32_t ZEROCOIN_VERSION_2 = 2;
 
-    // Security levels
-    enum SecurityLevel {
-        SECURITY_LEVEL_80 = 80,
-        SECURITY_LEVEL_128 = 128,
-        SECURITY_LEVEL_256 = 256
-    };
-
-    // Coin denominations
-    enum CoinDenomination {
+    enum class CoinDenomination : uint64_t {
         ZQ_ERROR = 0,
         ZQ_ONE = 1,
         ZQ_FIVE = 5,
@@ -55,1006 +44,485 @@ namespace libzerocoin {
         ZQ_FIVE_THOUSAND = 5000
     };
 
-    // Convert denomination to string
-    std::string DenominationToString(CoinDenomination denomination);
-    CoinDenomination StringToDenomination(const std::string& str);
-
     // ============================================================================
-    // Serialization Support
+    // MODERN BIGNUM WRAPPER (C++20 RAII)
     // ============================================================================
 
-    class CDataStream {
+    class BigNum {
     private:
-        std::vector<unsigned char> vch;
-        size_t nReadPos;
+        BIGNUM* bn{nullptr};
 
     public:
-        CDataStream() : nReadPos(0) {}
+        // Costruttori
+        BigNum() : bn(BN_new()) {
+            if (!bn) throw std::bad_alloc();
+        }
 
-        template<typename T>
-        CDataStream& operator<<(const T& obj) {
-            // Serialize obj into vch
-            const unsigned char* p = (const unsigned char*)&obj;
-            vch.insert(vch.end(), p, p + sizeof(T));
+        explicit BigNum(const std::string& hex) : bn(nullptr) {
+            BN_hex2bn(&bn, hex.c_str());
+            if (!bn) throw std::runtime_error("Invalid hex string");
+        }
+
+        explicit BigNum(uint64_t value) : bn(BN_new()) {
+            if (!bn) throw std::bad_alloc();
+            BN_set_word(bn, value);
+        }
+
+        // Rule of Five
+        BigNum(const BigNum& other) : bn(BN_dup(other.bn)) {
+            if (!bn) throw std::bad_alloc();
+        }
+
+        BigNum(BigNum&& other) noexcept : bn(other.bn) {
+            other.bn = nullptr;
+        }
+
+        BigNum& operator=(const BigNum& other) {
+            if (this != &other) {
+                BIGNUM* new_bn = BN_dup(other.bn);
+                if (!new_bn) throw std::bad_alloc();
+                BN_free(bn);
+                bn = new_bn;
+            }
             return *this;
         }
 
-        template<typename T>
-        CDataStream& operator>>(T& obj) {
-            // Deserialize obj from vch
-            if (nReadPos + sizeof(T) > vch.size()) {
-                throw std::runtime_error("CDataStream::operator>>: out of data");
+        BigNum& operator=(BigNum&& other) noexcept {
+            if (this != &other) {
+                BN_free(bn);
+                bn = other.bn;
+                other.bn = nullptr;
             }
-            memcpy(&obj, &vch[nReadPos], sizeof(T));
-            nReadPos += sizeof(T);
             return *this;
         }
 
-        void write(const char* pch, size_t nSize) {
-            vch.insert(vch.end(), pch, pch + nSize);
+        ~BigNum() {
+            BN_free(bn);
         }
 
-        void read(char* pch, size_t nSize) {
-            if (nReadPos + nSize > vch.size()) {
-                throw std::runtime_error("CDataStream::read: out of data");
-            }
-            memcpy(pch, &vch[nReadPos], nSize);
-            nReadPos += nSize;
+        // Conversioni
+        [[nodiscard]] std::string toHex() const {
+            char* hex = BN_bn2hex(bn);
+            if (!hex) throw std::runtime_error("BN_bn2hex failed");
+            std::string result(hex);
+            OPENSSL_free(hex);
+            return result;
         }
 
-        void clear() { vch.clear(); nReadPos = 0; }
-        size_t size() const { return vch.size(); }
-        bool empty() const { return vch.empty(); }
-        const std::vector<unsigned char>& getvch() const { return vch; }
-    };
-
-    // Serialization macros (simplified from original)
-    #define READWRITE(obj) (ser_action.ForRead() ? ser_action.stream >> obj : ser_action.stream << obj)
-    #define READWRITECOMPRESS(obj) READWRITE(obj)
-
-    class CSerializeData : public std::vector<unsigned char> {
-    public:
-        CSerializeData() {}
-        CSerializeData(size_t nSize) : std::vector<unsigned char>(nSize) {}
-    };
-
-    // Serialization action
-    enum CSerAction {
-        SER_NETWORK = 1,
-        SER_DISK = 2
-    };
-
-    // ============================================================================
-    // uint256 - 256-bit hash (Enhanced)
-    // ============================================================================
-
-    class uint256 {
-    private:
-        unsigned char data[32];
-
-    public:
-        uint256() { memset(data, 0, sizeof(data)); }
-
-        uint256(uint64_t b) {
-            memset(data, 0, sizeof(data));
-            data[24] = (b >> 56) & 0xff;
-            data[25] = (b >> 48) & 0xff;
-            data[26] = (b >> 40) & 0xff;
-            data[27] = (b >> 32) & 0xff;
-            data[28] = (b >> 24) & 0xff;
-            data[29] = (b >> 16) & 0xff;
-            data[30] = (b >> 8) & 0xff;
-            data[31] = b & 0xff;
+        [[nodiscard]] std::vector<uint8_t> toBytes() const {
+            std::vector<uint8_t> bytes(BN_num_bytes(bn));
+            BN_bn2bin(bn, bytes.data());
+            return bytes;
         }
 
-        uint256(const std::string& str) {
-            fromHex(str);
-        }
-
-        uint256(const std::vector<unsigned char>& vch) {
-            if (vch.size() == 32) {
-                memcpy(data, vch.data(), 32);
-            } else {
-                memset(data, 0, sizeof(data));
-            }
-        }
-
-        bool IsNull() const {
-            for (int i = 0; i < 32; i++) {
-                if (data[i] != 0) return false;
-            }
-            return true;
-        }
-
-        void SetNull() {
-            memset(data, 0, sizeof(data));
-        }
-
-        bool operator==(const uint256& b) const {
-            return memcmp(data, b.data, 32) == 0;
-        }
-
-        bool operator!=(const uint256& b) const {
-            return memcmp(data, b.data, 32) != 0;
-        }
-
-        bool operator<(const uint256& b) const {
-            return memcmp(data, b.data, 32) < 0;
-        }
-
-        const unsigned char* begin() const { return data; }
-        const unsigned char* end() const { return data + 32; }
-        unsigned char* begin() { return data; }
-        unsigned char* end() { return data + 32; }
-
-        unsigned char& operator[](size_t pos) { return data[pos]; }
-        const unsigned char& operator[](size_t pos) const { return data[pos]; }
-
-        std::string ToString() const {
-            static const char* hexmap = "0123456789abcdef";
-            std::string s(64, ' ');
-            for (int i = 0; i < 32; i++) {
-                s[2*i] = hexmap[(data[i] & 0xF0) >> 4];
-                s[2*i+1] = hexmap[data[i] & 0x0F];
-            }
-            return s;
-        }
-
-        void fromHex(const std::string& hex) {
-            if (hex.size() != 64) {
-                SetNull();
-                return;
-            }
-
-            for (size_t i = 0; i < 32; i++) {
-                std::string byte = hex.substr(i*2, 2);
-                data[i] = (unsigned char)strtol(byte.c_str(), nullptr, 16);
-            }
-        }
-
-        uint256 reverse() const {
-            uint256 result;
-            for (int i = 0; i < 32; i++) {
-                result.data[i] = data[31 - i];
+        // Operatori aritmetici
+        BigNum operator+(const BigNum& other) const {
+            BigNum result;
+            if (!BN_add(result.bn, bn, other.bn)) {
+                throw std::runtime_error("BN_add failed");
             }
             return result;
         }
 
-        // Serialization support
-        template<typename Stream>
-        void Serialize(Stream& s) const {
-            s.write((char*)data, 32);
+        BigNum operator*(const BigNum& other) const {
+            BigNum result;
+            BN_CTX* ctx = BN_CTX_new();
+            if (!ctx) throw std::bad_alloc();
+
+            if (!BN_mul(result.bn, bn, other.bn, ctx)) {
+                BN_CTX_free(ctx);
+                throw std::runtime_error("BN_mul failed");
+            }
+            BN_CTX_free(ctx);
+            return result;
         }
 
-        template<typename Stream>
-        void Unserialize(Stream& s) {
-            s.read((char*)data, 32);
+        BigNum modExp(const BigNum& exp, const BigNum& mod) const {
+            BigNum result;
+            BN_CTX* ctx = BN_CTX_new();
+            if (!ctx) throw std::bad_alloc();
+
+            if (!BN_mod_exp(result.bn, bn, exp.bn, mod.bn, ctx)) {
+                BN_CTX_free(ctx);
+                throw std::runtime_error("BN_mod_exp failed");
+            }
+            BN_CTX_free(ctx);
+            return result;
         }
+
+        // Mod inverse
+        [[nodiscard]] BigNum modInverse(const BigNum& mod) const {
+            BigNum result;
+            BN_CTX* ctx = BN_CTX_new();
+            if (!ctx) throw std::bad_alloc();
+
+            if (!BN_mod_inverse(result.bn, bn, mod.bn, ctx)) {
+                BN_CTX_free(ctx);
+                throw std::runtime_error("BN_mod_inverse failed");
+            }
+            BN_CTX_free(ctx);
+            return result;
+        }
+
+        // Comparatori
+        [[nodiscard]] bool operator==(const BigNum& other) const {
+            return BN_cmp(bn, other.bn) == 0;
+        }
+
+        [[nodiscard]] bool operator!=(const BigNum& other) const {
+            return !(*this == other);
+        }
+
+        [[nodiscard]] bool operator<(const BigNum& other) const {
+            return BN_cmp(bn, other.bn) < 0;
+        }
+
+        [[nodiscard]] bool isZero() const {
+            return BN_is_zero(bn);
+        }
+
+        [[nodiscard]] bool isOne() const {
+            return BN_is_one(bn);
+        }
+
+        // Random generation (C++20 concept)
+        template<typename Generator = std::mt19937_64>
+        requires std::uniform_random_bit_generator<Generator>
+        static BigNum random(size_t bits, Generator& gen = std::mt19937_64{std::random_device{}()}) {
+            BigNum result;
+            std::vector<uint8_t> bytes((bits + 7) / 8);
+            std::generate(bytes.begin(), bytes.end(), gen);
+            BN_bin2bn(bytes.data(), bytes.size(), result.bn);
+            return result;
+        }
+
+        // Get internal BIGNUM (per compatibilità)
+        [[nodiscard]] const BIGNUM* get() const { return bn; }
+        [[nodiscard]] BIGNUM* get() { return bn; }
     };
 
+    using CBigNum = BigNum; // Alias per compatibilità
+
     // ============================================================================
-    // CBigNum - Enhanced with OpenSSL 3.5 compatibility
+    // UINT256 (C++20 MODERN)
     // ============================================================================
 
-    class CBigNum {
+    class uint256 {
     private:
-        BIGNUM* bignum;
-        static BN_CTX* ctx;
-
-        // OpenSSL 3.5 EVP-based RSA for prime generation
-        static EVP_PKEY* generateRSAKey(int bits);
-        static BIGNUM* extractRSA_N(EVP_PKEY* pkey);
+        std::array<uint8_t, 32> data_{};
 
     public:
-        // Constructors
-        CBigNum();
-        CBigNum(const CBigNum& b);
-        explicit CBigNum(int n);
-        explicit CBigNum(long n);
-        explicit CBigNum(long long n);
-        explicit CBigNum(unsigned int n);
-        explicit CBigNum(unsigned long n);
-        explicit CBigNum(unsigned long long n);
-        explicit CBigNum(const std::vector<unsigned char>& vch);
-        explicit CBigNum(const std::string& str);
-        ~CBigNum();
+        constexpr uint256() = default;
 
-        // Assignment
-        CBigNum& operator=(const CBigNum& b);
-        CBigNum& operator=(long long n);
-
-        // Arithmetic operators
-        CBigNum operator+(const CBigNum& b) const;
-        CBigNum operator-(const CBigNum& b) const;
-        CBigNum operator*(const CBigNum& b) const;
-        CBigNum operator/(const CBigNum& b) const;
-        CBigNum operator%(const CBigNum& b) const;
-
-        CBigNum& operator+=(const CBigNum& b);
-        CBigNum& operator-=(const CBigNum& b);
-        CBigNum& operator*=(const CBigNum& b);
-        CBigNum& operator/=(const CBigNum& b);
-        CBigNum& operator%=(const CBigNum& b);
-
-        // Unary operators
-        CBigNum operator-() const;
-        CBigNum operator++(int); // postfix
-        CBigNum& operator++();    // prefix
-        CBigNum operator--(int); // postfix
-        CBigNum& operator--();    // prefix
-
-        // Comparison operators
-        friend bool operator==(const CBigNum& a, const CBigNum& b);
-        friend bool operator!=(const CBigNum& a, const CBigNum& b);
-        friend bool operator<=(const CBigNum& a, const CBigNum& b);
-        friend bool operator>=(const CBigNum& a, const CBigNum& b);
-        friend bool operator<(const CBigNum& a, const CBigNum& b);
-        friend bool operator>(const CBigNum& a, const CBigNum& b);
-
-        // Bitwise operators
-        CBigNum operator<<(unsigned int shift) const;
-        CBigNum operator>>(unsigned int shift) const;
-        CBigNum& operator<<=(unsigned int shift);
-        CBigNum& operator>>=(unsigned int shift);
-
-        // Modular arithmetic
-        CBigNum modExp(const CBigNum& e, const CBigNum& m) const;
-        CBigNum modInverse(const CBigNum& m) const;
-        CBigNum gcd(const CBigNum& b) const;
-
-        // Cryptographic operations
-        static CBigNum generatePrime(unsigned int numBits, bool safe = false);
-        static CBigNum generateStrongPrime(unsigned int numBits, const CBigNum& aux = CBigNum(0));
-        static CBigNum randBignum(const CBigNum& range);
-        static CBigNum randBignum(const CBigNum& min, const CBigNum& max);
-        static CBigNum randKBitBignum(unsigned int k);
-
-        // Hash functions
-        CBigNum sha256() const;
-        CBigNum sha1() const;
-        CBigNum ripemd160() const;
-
-        // Conversion methods
-        void setvch(const std::vector<unsigned char>& vch);
-        std::vector<unsigned char> getvch() const;
-        void setHex(const std::string& str);
-        std::string getHex() const;
-        std::string ToString(int nBase = 10) const;
-
-        // Utility methods
-        unsigned int bitSize() const;
-        unsigned int byteSize() const;
-        bool isPrime(int checks = 20) const;
-        bool isOdd() const;
-        bool isEven() const;
-        bool isZero() const;
-        bool isOne() const;
-        bool isNegative() const;
-        void setNegative(bool negative);
-        CBigNum abs() const;
-
-        // Access to internal BIGNUM
-        const BIGNUM* getBN() const { return bignum; }
-        BIGNUM* getBN() { return bignum; }
-
-        // Serialization
-        template<typename Stream>
-        void Serialize(Stream& s) const {
-            std::vector<unsigned char> vch = getvch();
-            unsigned int nSize = vch.size();
-            s.write((char*)&nSize, sizeof(nSize));
-            if (nSize > 0) {
-                s.write((char*)&vch[0], nSize);
+        explicit uint256(std::span<const uint8_t> bytes) {
+            if (bytes.size() != 32) {
+                throw std::invalid_argument("uint256 requires exactly 32 bytes");
             }
+            std::ranges::copy(bytes, data_.begin());
         }
 
-        template<typename Stream>
-        void Unserialize(Stream& s) {
-            unsigned int nSize;
-            s.read((char*)&nSize, sizeof(nSize));
-            if (nSize > 0) {
-                std::vector<unsigned char> vch(nSize);
-                s.read((char*)&vch[0], nSize);
-                setvch(vch);
-            } else {
-                *this = 0;
+        // Hash from string (C++20)
+        static uint256 hash(std::string_view str) {
+            EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+            if (!ctx) throw std::bad_alloc();
+
+            uint256 result;
+            if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1 ||
+                EVP_DigestUpdate(ctx, str.data(), str.size()) != 1 ||
+                EVP_DigestFinal_ex(ctx, result.data_.data(), nullptr) != 1) {
+                EVP_MD_CTX_free(ctx);
+            throw std::runtime_error("SHA256 failed");
+                }
+
+                EVP_MD_CTX_free(ctx);
+                return result;
+        }
+
+        // Constexpr methods
+        [[nodiscard]] constexpr bool isNull() const noexcept {
+            return std::ranges::all_of(data_, [](uint8_t b) { return b == 0; });
+        }
+
+        [[nodiscard]] std::string toHex() const {
+            constexpr auto hex_digits = "0123456789abcdef";
+            std::string result(64, '0');
+
+            for (size_t i = 0; i < 32; ++i) {
+                result[2*i] = hex_digits[data_[i] >> 4];
+                result[2*i + 1] = hex_digits[data_[i] & 0x0F];
             }
+            return result;
         }
 
-        // Static initialization
-        static void init();
-        static void cleanup();
-    };
-
-    // Comparison operators (must be in header for template friend)
-    bool operator==(const CBigNum& a, const CBigNum& b);
-    bool operator!=(const CBigNum& a, const CBigNum& b);
-    bool operator<=(const CBigNum& a, const CBigNum& b);
-    bool operator>=(const CBigNum& a, const CBigNum& b);
-    bool operator<(const CBigNum& a, const CBigNum& b);
-    bool operator>(const CBigNum& a, const CBigNum& b);
-
-    // ============================================================================
-    // Hash Functions (Enhanced)
-    // ============================================================================
-
-    uint256 Hash(const std::vector<unsigned char>& vch);
-    uint256 Hash(const std::string& str);
-    uint256 Hash(const uint256& hash);
-    uint256 HashSHA256(const std::vector<unsigned char>& vch);
-    uint256 HashSHA1(const std::vector<unsigned char>& vch);
-    uint256 HashRIPEMD160(const std::vector<unsigned char>& vch);
-    uint256 HashSHA256D(const std::vector<unsigned char>& vch); // Double SHA256
-
-    // HMAC
-    std::vector<unsigned char> HMAC_SHA256(const std::vector<unsigned char>& key,
-                                           const std::vector<unsigned char>& message);
-
-    // ============================================================================
-    // IntegerGroupParams (Enhanced from original)
-    // ============================================================================
-
-    class IntegerGroupParams {
-    public:
-        CBigNum g;
-        CBigNum h;
-        CBigNum p;
-        CBigNum q;
-        CBigNum groupOrder;
-
-        IntegerGroupParams();
-        ~IntegerGroupParams() = default;
-
-        // Generate random element in the group
-        CBigNum randomElement() const;
-
-        // Validate parameters
-        bool validate() const;
-
-        // Check if element is in group
-        bool isElement(const CBigNum& element) const;
-
-        // Serialization
-        template<typename Stream>
-        void Serialize(Stream& s) const {
-            g.Serialize(s);
-            h.Serialize(s);
-            p.Serialize(s);
-            q.Serialize(s);
-            groupOrder.Serialize(s);
+        [[nodiscard]] constexpr std::span<const uint8_t> bytes() const noexcept {
+            return data_;
         }
 
-        template<typename Stream>
-        void Unserialize(Stream& s) {
-            g.Unserialize(s);
-            h.Unserialize(s);
-            p.Unserialize(s);
-            q.Unserialize(s);
-            groupOrder.Unserialize(s);
+        [[nodiscard]] constexpr bool operator==(const uint256& other) const noexcept {
+            return data_ == other.data_;
+        }
+
+        [[nodiscard]] constexpr auto operator<=>(const uint256& other) const noexcept {
+            return data_ <=> other.data_;
+        }
+
+        // Serialization support
+        template<typename Archive>
+        void serialize(Archive& ar) {
+            ar(data_);
         }
     };
 
     // ============================================================================
-    // ZerocoinParams (Enhanced from original)
+    // ZEROCOIN PARAMS (C++20 MODERN)
     // ============================================================================
 
     class ZerocoinParams {
+    private:
+        CBigNum N_;  // RSA modulus
+        CBigNum g_;  // Generator g ∈ QR(N)
+        CBigNum h_;  // Generator h ∈ QR(N), h ≠ g
+        uint32_t securityLevel_;
+        uint32_t accumulatorParams_;
+
     public:
-        IntegerGroupParams coinCommitmentGroup;
-        IntegerGroupParams serialNumberSoKCommitmentGroup;
-        IntegerGroupParams accumulatorParams;
+        ZerocoinParams(CBigNum N, CBigNum g, CBigNum h,
+                       uint32_t securityLevel = ZEROCOIN_DEFAULT_SECURITYLEVEL,
+                       uint32_t accumulatorParams = 2048)
+        : N_(std::move(N)), g_(std::move(g)), h_(std::move(h)),
+        securityLevel_(securityLevel), accumulatorParams_(accumulatorParams) {
 
-        uint32_t accumulatorParamsMinPrimeLength;
-        uint32_t ZK_iterations;
-        uint32_t securityLevel;
-
-        // Original constructors
-        ZerocoinParams();
-        ZerocoinParams(CBigNum N, uint32_t securityLevel = 80);
-        ~ZerocoinParams() = default;
-
-        // Validate all parameters
-        bool validate() const;
-
-        // Get denomination values
-        static CBigNum getCoinValue(CoinDenomination denomination);
-
-        // Serialization
-        template<typename Stream>
-        void Serialize(Stream& s) const {
-            coinCommitmentGroup.Serialize(s);
-            serialNumberSoKCommitmentGroup.Serialize(s);
-            accumulatorParams.Serialize(s);
-            s.write((char*)&accumulatorParamsMinPrimeLength, sizeof(accumulatorParamsMinPrimeLength));
-            s.write((char*)&ZK_iterations, sizeof(ZK_iterations));
-            s.write((char*)&securityLevel, sizeof(securityLevel));
+            if (!validate()) {
+                throw std::invalid_argument("Invalid Zerocoin parameters");
+            }
         }
 
-        template<typename Stream>
-        void Unserialize(Stream& s) {
-            coinCommitmentGroup.Unserialize(s);
-            serialNumberSoKCommitmentGroup.Unserialize(s);
-            accumulatorParams.Unserialize(s);
-            s.read((char*)&accumulatorParamsMinPrimeLength, sizeof(accumulatorParamsMinPrimeLength));
-            s.read((char*)&ZK_iterations, sizeof(ZK_iterations));
-            s.read((char*)&securityLevel, sizeof(securityLevel));
+        // Factory method (C++20)
+        [[nodiscard]] static std::unique_ptr<ZerocoinParams> generate(
+            uint32_t securityLevel = ZEROCOIN_DEFAULT_SECURITYLEVEL,
+            size_t rsaBits = 3072);
+
+        // Validazione
+        [[nodiscard]] bool validate() const;
+
+        // Getters
+        [[nodiscard]] const CBigNum& N() const& noexcept { return N_; }
+        [[nodiscard]] const CBigNum& g() const& noexcept { return g_; }
+        [[nodiscard]] const CBigNum& h() const& noexcept { return h_; }
+        [[nodiscard]] uint32_t securityLevel() const noexcept { return securityLevel_; }
+        [[nodiscard]] uint32_t accumulatorParams() const noexcept { return accumulatorParams_; }
+
+        // Serialization
+        template<typename Archive>
+        void serialize(Archive& ar) {
+            ar(N_, g_, h_, securityLevel_, accumulatorParams_);
         }
     };
 
     // ============================================================================
-    // Accumulator (Enhanced from original)
+    // PUBLIC COIN (C++20)
+    // ============================================================================
+
+    class PublicCoin {
+    private:
+        std::shared_ptr<ZerocoinParams> params_;
+        CBigNum value_;
+        CoinDenomination denomination_;
+
+    public:
+        PublicCoin() : denomination_(CoinDenomination::ZQ_ERROR) {}
+
+        PublicCoin(std::shared_ptr<ZerocoinParams> params,
+                   CBigNum value,
+                   CoinDenomination denomination)
+        : params_(std::move(params)),
+        value_(std::move(value)),
+        denomination_(denomination) {
+
+            if (!validate()) {
+                throw std::invalid_argument("Invalid public coin");
+            }
+        }
+
+        [[nodiscard]] bool validate() const;
+
+        // Getters
+        [[nodiscard]] const CBigNum& value() const& noexcept { return value_; }
+        [[nodiscard]] CoinDenomination denomination() const noexcept { return denomination_; }
+        [[nodiscard]] const auto& params() const& noexcept { return params_; }
+
+        [[nodiscard]] bool operator==(const PublicCoin& other) const {
+            return value_ == other.value_ && denomination_ == other.denomination_;
+        }
+
+        template<typename Archive>
+        void serialize(Archive& ar) {
+            ar(value_, denomination_);
+        }
+    };
+
+    // ============================================================================
+    // PRIVATE COIN (C++20)
+    // ============================================================================
+
+    class PrivateCoin {
+    private:
+        std::shared_ptr<ZerocoinParams> params_;
+        CoinDenomination denomination_;
+        CBigNum serialNumber_;
+        CBigNum randomness_;
+        PublicCoin publicCoin_;
+        uint256 signature_;
+
+    public:
+        PrivateCoin(std::shared_ptr<ZerocoinParams> params,
+                    CoinDenomination denomination);
+
+        void mint();
+
+        // Getters
+        [[nodiscard]] const PublicCoin& publicCoin() const& noexcept { return publicCoin_; }
+        [[nodiscard]] const CBigNum& serialNumber() const& noexcept { return serialNumber_; }
+        [[nodiscard]] const CBigNum& randomness() const& noexcept { return randomness_; }
+        [[nodiscard]] CoinDenomination denomination() const noexcept { return denomination_; }
+        [[nodiscard]] const uint256& signature() const& noexcept { return signature_; }
+
+        template<typename Archive>
+        void serialize(Archive& ar) {
+            ar(denomination_, serialNumber_, randomness_, publicCoin_, signature_);
+        }
+
+    private:
+        void generateSerialNumber();
+        void generateRandomness();
+        [[nodiscard]] uint256 signCoin() const;
+    };
+
+    // ============================================================================
+    // ACCUMULATOR (C++20 MODERN)
     // ============================================================================
 
     class Accumulator {
     private:
-        const IntegerGroupParams* params;
-        CBigNum value;
+        std::shared_ptr<ZerocoinParams> params_;
+        CBigNum value_;
+        size_t coinCount_{0};
+        CBigNum accumulatorModulus_;
+        std::vector<CBigNum> accumulatedValues_;
 
     public:
-        Accumulator(const IntegerGroupParams* p, const CBigNum& val);
-        ~Accumulator() = default;
+        Accumulator(std::shared_ptr<ZerocoinParams> params,
+                    CBigNum accumulatorModulus);
 
-        // Add element to accumulator
-        void accumulate(const CBigNum& val);
-        void Add(const CBigNum& val) { accumulate(val); } // Alias for compatibility
+        // Modifica accumulator
+        void accumulate(const CBigNum& coinValue);
+        void remove(const CBigNum& coinValue);
 
-        // Get current value
-        CBigNum getValue() const { return value; }
-        const IntegerGroupParams* getParams() const { return params; }
-
-        // Verify if value is in accumulator
-        bool isMember(const CBigNum& val) const;
-
-        // Serialization
-        template<typename Stream>
-        void Serialize(Stream& s) const {
-            value.Serialize(s);
+        // Query
+        [[nodiscard]] bool contains(const CBigNum& coinValue) const noexcept {
+            return std::ranges::find(accumulatedValues_, coinValue) != accumulatedValues_.end();
         }
 
-        template<typename Stream>
-        void Unserialize(Stream& s, const IntegerGroupParams* p) {
-            params = p;
-            value.Unserialize(s);
+        // Getters
+        [[nodiscard]] const CBigNum& value() const& noexcept { return value_; }
+        [[nodiscard]] size_t coinCount() const noexcept { return coinCount_; }
+        [[nodiscard]] const CBigNum& modulus() const& noexcept { return accumulatorModulus_; }
+
+        // Calcola witness
+        [[nodiscard]] CBigNum calculateWitness(const CBigNum& coinValue) const;
+
+        template<typename Archive>
+        void serialize(Archive& ar) {
+            ar(value_, coinCount_, accumulatorModulus_, accumulatedValues_);
         }
     };
 
     // ============================================================================
-    // AccumulatorWitness (Enhanced from original)
+    // COIN SPEND (C++20 COMPLETE)
     // ============================================================================
 
-    class AccumulatorWitness {
+    class CoinSpend {
+    public:
+        enum class Version : uint8_t {
+            V1 = ZEROCOIN_VERSION_1,
+            V2 = ZEROCOIN_VERSION_2
+        };
+
     private:
-        const Accumulator* accumulator;
-        CBigNum element;
-        CBigNum witness;
+        Version version_;
+        std::shared_ptr<ZerocoinParams> params_;
+        CBigNum coinSerialNumber_;
+        uint32_t accumulatorId_{0};
+        CBigNum accumulatorValue_;
+        uint256 ptxHash_;
+        std::vector<uint8_t> accumulatorProof_;
+        std::vector<uint8_t> serialNumberProof_;
+        std::vector<uint8_t> signature_;
 
     public:
-        AccumulatorWitness(const Accumulator* acc, const CBigNum& elem);
-        ~AccumulatorWitness() = default;
+        CoinSpend() = default;
 
-        // Add element and update witness
-        void AddElement(const CBigNum& elem);
+        CoinSpend(std::shared_ptr<ZerocoinParams> params,
+                  const PrivateCoin& coin,
+                  const Accumulator& accumulator,
+                  uint32_t accumulatorId,
+                  const uint256& ptxHash,
+                  Version version = Version::V2);
 
-        // Verify witness
-        bool Verify() const;
+        // Verifica
+        [[nodiscard]] bool verify(const Accumulator& accumulator) const;
+        [[nodiscard]] bool hasValidSignature() const;
 
-        // Get witness value
-        CBigNum getValue() const { return witness; }
+        // Getters
+        [[nodiscard]] Version version() const noexcept { return version_; }
+        [[nodiscard]] const CBigNum& coinSerialNumber() const& noexcept { return coinSerialNumber_; }
+        [[nodiscard]] uint32_t accumulatorId() const noexcept { return accumulatorId_; }
+        [[nodiscard]] const CBigNum& accumulatorValue() const& noexcept { return accumulatorValue_; }
+        [[nodiscard]] const uint256& txOutHash() const& noexcept { return ptxHash_; }
 
-        // Get element
-        CBigNum getElement() const { return element; }
-
-        // Serialization
-        template<typename Stream>
-        void Serialize(Stream& s) const {
-            element.Serialize(s);
-            witness.Serialize(s);
+        template<typename Archive>
+        void serialize(Archive& ar) {
+            ar(version_, coinSerialNumber_, accumulatorId_,
+               accumulatorValue_, ptxHash_, accumulatorProof_,
+               serialNumberProof_, signature_);
         }
 
-        template<typename Stream>
-        void Unserialize(Stream& s, const Accumulator* acc) {
-            accumulator = acc;
-            element.Unserialize(s);
-            witness.Unserialize(s);
-        }
+    private:
+        void generateAccumulatorProof(const Accumulator& accumulator,
+                                      const CBigNum& witness);
+        void generateSerialNumberProof(const PrivateCoin& coin);
+        [[nodiscard]] std::vector<uint8_t> getSignatureMessage() const;
     };
 
-    // Continuazione del file header...
+    // ============================================================================
+    // UTILITY FUNCTIONS (C++20)
+    // ============================================================================
 
-    namespace libzerocoin {
+    namespace utils {
 
-        // ============================================================================
-        // Proof Base Class (from original)
-        // ============================================================================
+        // Random generation
+        [[nodiscard]] CBigNum randomBignum(const CBigNum& upperBound);
+        [[nodiscard]] CBigNum randomPrime(size_t bits);
 
-        class Proof {
-        public:
-            virtual ~Proof() = default;
+        // Modular arithmetic
+        [[nodiscard]] CBigNum modExp(const CBigNum& base, const CBigNum& exp, const CBigNum& mod);
+        [[nodiscard]] CBigNum modInverse(const CBigNum& a, const CBigNum& mod);
+        [[nodiscard]] bool isQuadraticResidue(const CBigNum& a, const CBigNum& p);
 
-            // Verify the proof
-            virtual bool Verify(const ZerocoinParams* params) const = 0;
+        // Hash functions
+        [[nodiscard]] std::vector<uint8_t> sha256(std::span<const uint8_t> data);
+        [[nodiscard]] uint256 hashToUint256(std::span<const uint8_t> data);
 
-            // Serialization
-            virtual void Serialize(CDataStream& stream) const = 0;
-            virtual void Unserialize(CDataStream& stream) = 0;
+        // Validazione
+        [[nodiscard]] bool validateRSAModulus(const CBigNum& N);
+        [[nodiscard]] bool validateGenerator(const CBigNum& g, const CBigNum& N);
 
-            // Get proof size in bytes
-            virtual size_t GetSize() const = 0;
+        // C++20 concepts
+        template<typename T>
+        concept Hashable = requires(T t) {
+            { std::hash<T>{}(t) } -> std::convertible_to<size_t>;
         };
 
-        // ============================================================================
-        // Commitment Proof of Knowledge (from original)
-        // ============================================================================
+    } // namespace utils
 
-        class CommitmentProofOfKnowledge : public Proof {
-        private:
-            CBigNum S;
-            CBigNum A;
-            CBigNum C;
-            CBigNum v_response;
-            CBigNum rA_response;
-            CBigNum rB_response;
-
-        public:
-            CommitmentProofOfKnowledge() = default;
-            CommitmentProofOfKnowledge(const IntegerGroupParams* params,
-                                       const Commitment& commitment,
-                                       const CBigNum& value);
-
-            // Proof interface
-            bool Verify(const ZerocoinParams* params) const override;
-            void Serialize(CDataStream& stream) const override;
-            void Unserialize(CDataStream& stream) override;
-            size_t GetSize() const override;
-
-            // Original methods
-            bool Verify(const IntegerGroupParams* params,
-                        const Commitment& commitment) const;
-
-                        // Getters
-                        const CBigNum& getS() const { return S; }
-                        const CBigNum& getA() const { return A; }
-                        const CBigNum& getC() const { return C; }
-
-                        // Create a proof for a commitment
-                        static std::unique_ptr<CommitmentProofOfKnowledge> Create(
-                            const IntegerGroupParams* params,
-                            const Commitment& commitment,
-                            const CBigNum& value,
-                            const CBigNum& randomness);
-        };
-
-        // ============================================================================
-        // Accumulator Proof of Knowledge (from original)
-        // ============================================================================
-
-        class AccumulatorProofOfKnowledge : public Proof {
-        private:
-            CBigNum C_e;
-            CBigNum C_u;
-            CBigNum C_r;
-            CBigNum st_1;
-            CBigNum st_2;
-            CBigNum st_3;
-            CBigNum t_1;
-            CBigNum t_2;
-            CBigNum t_3;
-            CBigNum t_4;
-            CBigNum s_alpha;
-            CBigNum s_beta;
-            CBigNum s_zeta;
-            CBigNum s_sigma;
-            CBigNum s_eta;
-            CBigNum s_epsilon;
-            CBigNum s_delta;
-            CBigNum s_xi;
-            CBigNum s_phi;
-            CBigNum s_gamma;
-            CBigNum s_psi;
-
-        public:
-            AccumulatorProofOfKnowledge() = default;
-
-            // Original constructor from master branch
-            AccumulatorProofOfKnowledge(const IntegerGroupParams* accumulatorParams,
-                                        const IntegerGroupParams* commitmentParams,
-                                        const Commitment& commitmentToCoin,
-                                        const Accumulator& accumulator);
-
-            // Proof interface
-            bool Verify(const ZerocoinParams* params) const override;
-            void Serialize(CDataStream& stream) const override;
-            void Unserialize(CDataStream& stream) override;
-            size_t GetSize() const override;
-
-            // Original verification method
-            bool Verify(const Accumulator& accumulator,
-                        const Commitment& commitmentToCoin) const;
-
-                        // Create proof
-                        static std::unique_ptr<AccumulatorProofOfKnowledge> Create(
-                            const IntegerGroupParams* accumulatorParams,
-                            const IntegerGroupParams* commitmentParams,
-                            const Commitment& commitmentToCoin,
-                            const CBigNum& coinValue,
-                            const CBigNum& coinRandomness,
-                            const Accumulator& accumulator);
-        };
-
-        // ============================================================================
-        // Serial Number Signature of Knowledge (from original)
-        // ============================================================================
-
-        class SerialNumberSignatureOfKnowledge : public Proof {
-        private:
-            CBigNum A_prime;
-            CBigNum B_prime;
-            CBigNum r_1;
-            CBigNum r_2;
-            CBigNum r_3;
-            CBigNum m_1;
-            CBigNum m_2;
-            CBigNum m_3;
-            CBigNum s_1;
-            CBigNum s_2;
-            CBigNum s_3;
-            CBigNum t_1;
-            CBigNum t_2;
-            CBigNum t_3;
-            CBigNum t_4;
-
-        public:
-            SerialNumberSignatureOfKnowledge() = default;
-
-            // Original constructor from master branch
-            SerialNumberSignatureOfKnowledge(const IntegerGroupParams* params,
-                                             const CBigNum& coinSerialNumber,
-                                             const CBigNum& valueOfCommitmentToCoin,
-                                             const CBigNum& serialNumberSokCommitment,
-                                             const CBigNum& randomness,
-                                             const uint256& msghash);
-
-            // Proof interface
-            bool Verify(const ZerocoinParams* params) const override;
-            void Serialize(CDataStream& stream) const override;
-            void Unserialize(CDataStream& stream) override;
-            size_t GetSize() const override;
-
-            // Original verification method
-            bool Verify(const CBigNum& coinSerialNumber,
-                        const CBigNum& valueOfCommitmentToCoin,
-                        const CBigNum& serialNumberSokCommitment,
-                        const uint256& msghash) const;
-
-                        // Create signature
-                        static std::unique_ptr<SerialNumberSignatureOfKnowledge> Create(
-                            const IntegerGroupParams* params,
-                            const CBigNum& coinSerialNumber,
-                            const CBigNum& valueOfCommitmentToCoin,
-                            const CBigNum& serialNumberSokCommitment,
-                            const CBigNum& randomness,
-                            const uint256& msghash);
-        };
-
-        // ============================================================================
-        // Coin Classes (Enhanced with original features)
-        // ============================================================================
-
-        class PublicCoin {
-        private:
-            const ZerocoinParams* params;
-            CBigNum value;
-            CoinDenomination denomination;
-
-        public:
-            PublicCoin() : params(nullptr), denomination(ZQ_ERROR) {}
-            PublicCoin(const ZerocoinParams* p, const CBigNum& v, CoinDenomination d)
-            : params(p), value(v), denomination(d) {}
-
-            // Getters
-            const CBigNum& getValue() const { return value; }
-            CoinDenomination getDenomination() const { return denomination; }
-            const ZerocoinParams* getParams() const { return params; }
-
-            // Validation
-            bool validate() const;
-
-            // Comparison
-            bool operator==(const PublicCoin& other) const;
-            bool operator!=(const PublicCoin& other) const;
-            bool operator<(const PublicCoin& other) const;
-
-            // Hash
-            uint256 getValueHash() const;
-
-            // Serialization
-            template<typename Stream>
-            void Serialize(Stream& s) const {
-                value.Serialize(s);
-                uint32_t denom = (uint32_t)denomination;
-                s.write((char*)&denom, sizeof(denom));
-            }
-
-            template<typename Stream>
-            void Unserialize(Stream& s, const ZerocoinParams* p) {
-                params = p;
-                value.Unserialize(s);
-                uint32_t denom;
-                s.read((char*)&denom, sizeof(denom));
-                denomination = (CoinDenomination)denom;
-            }
-        };
-
-        class PrivateCoin {
-        private:
-            const ZerocoinParams* params;
-            CBigNum serialNumber;
-            CBigNum randomness;
-            PublicCoin publicCoin;
-            CoinDenomination denomination;
-            uint8_t version;
-            CBigNum v;
-
-        public:
-            // Constructors
-            PrivateCoin(const ZerocoinParams* p, CoinDenomination d, uint8_t v = 1);
-
-            // Getters
-            const CBigNum& getSerialNumber() const { return serialNumber; }
-            const CBigNum& getRandomness() const { return randomness; }
-            const PublicCoin& getPublicCoin() const { return publicCoin; }
-            CoinDenomination getDenomination() const { return denomination; }
-            uint8_t getVersion() const { return version; }
-            const CBigNum& getV() const { return v; }
-
-            // Generate coin with proper cryptographic properties
-            void generate();
-
-            // Create commitment for this coin
-            Commitment createCommitment() const;
-
-            // Create serial number signature
-            std::unique_ptr<SerialNumberSignatureOfKnowledge> createSerialNumberSignature(
-                const uint256& msghash) const;
-
-                // Validate coin
-                bool validate() const;
-
-                // Serialization
-                template<typename Stream>
-                void Serialize(Stream& s) const {
-                    serialNumber.Serialize(s);
-                    randomness.Serialize(s);
-                    publicCoin.Serialize(s);
-                    s.write((char*)&denomination, sizeof(denomination));
-                    s.write((char*)&version, sizeof(version));
-                    v.Serialize(s);
-                }
-
-                template<typename Stream>
-                void Unserialize(Stream& s, const ZerocoinParams* p) {
-                    params = p;
-                    serialNumber.Unserialize(s);
-                    randomness.Unserialize(s);
-                    publicCoin.Unserialize(s, p);
-                    s.read((char*)&denomination, sizeof(denomination));
-                    s.read((char*)&version, sizeof(version));
-                    v.Unserialize(s);
-                }
-        };
-
-        // ============================================================================
-        // Commitment (Enhanced)
-        // ============================================================================
-
-        class Commitment {
-        private:
-            const IntegerGroupParams* params;
-            CBigNum commitment;
-            CBigNum value;
-            CBigNum randomness;
-
-        public:
-            Commitment() : params(nullptr) {}
-            Commitment(const IntegerGroupParams* p, const CBigNum& val, const CBigNum& rand);
-
-            // Getters
-            CBigNum getCommitmentValue() const { return commitment; }
-            const IntegerGroupParams* getParams() const { return params; }
-            const CBigNum& getValue() const { return value; }
-            const CBigNum& getRandomness() const { return randomness; }
-
-            // Verification
-            bool verify() const;
-
-            // Comparison
-            bool operator==(const Commitment& rhs) const;
-            bool operator!=(const Commitment& rhs) const;
-
-            // Create proof of knowledge for this commitment
-            std::unique_ptr<CommitmentProofOfKnowledge> createProof(const CBigNum& val) const;
-
-            // Serialization
-            template<typename Stream>
-            void Serialize(Stream& s) const {
-                commitment.Serialize(s);
-                value.Serialize(s);
-                randomness.Serialize(s);
-            }
-
-            template<typename Stream>
-            void Unserialize(Stream& s, const IntegerGroupParams* p) {
-                params = p;
-                commitment.Unserialize(s);
-                value.Unserialize(s);
-                randomness.Unserialize(s);
-            }
-        };
-
-        // ============================================================================
-        // CoinSpend (Enhanced with original verification)
-        // ============================================================================
-
-        class CoinSpend {
-        private:
-            const ZerocoinParams* params;
-            CoinDenomination denomination;
-            uint32_t accumulatorId;
-            uint256 ptxHash;
-            uint256 accumulatorBlockHash;
-            CBigNum coinSerialNumber;
-            CBigNum accumulatorValue;
-            std::unique_ptr<AccumulatorProofOfKnowledge> accumulatorProof;
-            std::unique_ptr<SerialNumberSignatureOfKnowledge> serialNumberSignature;
-            unsigned char version;
-            uint8_t* bytes;
-            int32_t txVersion;
-            SpendMetaData metaData;
-
-        public:
-            // Constructors
-            CoinSpend() : params(nullptr), bytes(nullptr) {}
-            CoinSpend(const ZerocoinParams* params,
-                      const PrivateCoin& coin,
-                      Accumulator& accumulator,
-                      const uint32_t& checksum,
-                      const AccumulatorWitness& witness,
-                      const uint256& ptxHash,
-                      const SpendMetaData& metaData = SpendMetaData());
-
-            // Destructor
-            ~CoinSpend();
-
-            // Getters
-            const CBigNum& getCoinSerialNumber() const { return coinSerialNumber; }
-            const uint256& getTxOutHash() const { return ptxHash; }
-            const uint256& getAccumulatorBlockHash() const { return accumulatorBlockHash; }
-            uint32_t getAccumulatorId() const { return accumulatorId; }
-            CoinDenomination getDenomination() const { return denomination; }
-            unsigned char getVersion() const { return version; }
-            const SpendMetaData& getMetaData() const { return metaData; }
-            const CBigNum& getAccumulatorValue() const { return accumulatorValue; }
-
-            // Verification methods from original
-            bool Verify(const Accumulator& accumulator) const;
-            bool HasValidSerial() const;
-            bool HasValidSignature() const;
-            CBigNum CalculateValidSerial() const;
-
-            // Check if spend is valid
-            bool Verify() const;
-
-            // Signature verification
-            bool VerifySignature() const;
-
-            // Serialization
-            template<typename Stream>
-            void Serialize(Stream& s) const;
-
-            template<typename Stream>
-            void Unserialize(Stream& s, const ZerocoinParams* p);
-
-            // Get the signature
-            const SerialNumberSignatureOfKnowledge* getSerialNumberSignature() const {
-                return serialNumberSignature.get();
-            }
-
-            // Get the accumulator proof
-            const AccumulatorProofOfKnowledge* getAccumulatorProof() const {
-                return accumulatorProof.get();
-            }
-        };
-
-        // ============================================================================
-        // SpendMetaData (Enhanced)
-        // ============================================================================
-
-        class SpendMetaData {
-        private:
-            uint256 accumulatorId;
-            uint256 txHash;
-            uint256 blockHash;
-            uint32_t height;
-
-        public:
-            SpendMetaData() : height(0) {}
-            SpendMetaData(uint256 accumulatorId, uint256 txHash,
-                          uint256 blockHash = uint256(), uint32_t height = 0);
-
-            // Getters
-            const uint256& getAccumulatorId() const { return accumulatorId; }
-            const uint256& getTxHash() const { return txHash; }
-            const uint256& getBlockHash() const { return blockHash; }
-            uint32_t getHeight() const { return height; }
-
-            // Setters
-            void setAccumulatorId(const uint256& id) { accumulatorId = id; }
-            void setTxHash(const uint256& hash) { txHash = hash; }
-            void setBlockHash(const uint256& hash) { blockHash = hash; }
-            void setHeight(uint32_t h) { height = h; }
-
-            // Serialization
-            template<typename Stream>
-            void Serialize(Stream& s) const {
-                accumulatorId.Serialize(s);
-                txHash.Serialize(s);
-                blockHash.Serialize(s);
-                s.write((char*)&height, sizeof(height));
-            }
-
-            template<typename Stream>
-            void Unserialize(Stream& s) {
-                accumulatorId.Unserialize(s);
-                txHash.Unserialize(s);
-                blockHash.Unserialize(s);
-                s.read((char*)&height, sizeof(height));
-            }
-        };
-
-        // ============================================================================
-        // Parameter Generation (Complete from original)
-        // ============================================================================
-
-        class ParamsSoK {
-        public:
-            CBigNum n;
-            uint32_t securityLevel;
-
-            ParamsSoK() : securityLevel(80) {}
-        };
-
-        // Calculate integer group parameters (from original ParamGeneration.cpp)
-        IntegerGroupParams* CalculateIntegerParams(IntegerGroupParams &result,
-                                                   const CBigNum& N, const uint32_t securityLevel);
-
-        // Calculate accumulator parameters
-        IntegerGroupParams* CalculateAccumulatorParams(IntegerGroupParams &result,
-                                                       const CBigNum& N,
-                                                       uint32_t securityLevel);
-
-        // Generate Zerocoin parameters from N
-        ZerocoinParams* GenerateZerocoinParams(ZerocoinParams &result,
-                                               const CBigNum& N,
-                                               uint32_t securityLevel = 80);
-
-        // Verify parameters
-        bool VerifyZerocoinParams(const ZerocoinParams& params);
-
-        // ============================================================================
-        // Utility Functions for Proofs
-        // ============================================================================
-
-        // Generate random challenge for proofs
-        CBigNum GenerateRandomChallenge(uint32_t securityLevel = 80);
-
-        // Hash to prime function (used in proofs)
-        CBigNum HashToPrime(const std::vector<unsigned char>& input,
-                            uint32_t securityLevel = 80);
-
-        // Generate random parameters for testing
-        ZerocoinParams GenerateTestParams(uint32_t securityLevel = 80);
-
-    } // namespace libzerocoin
-
-
-#endif // LIBZEROCOIN_H
+} // namespace libzerocoin

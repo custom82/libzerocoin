@@ -1,35 +1,50 @@
-#include "libzerocoin.h"
+// test_main.cpp - Test C++20
+#include "libzerocoin.hpp"
 #include <iostream>
+#include <cassert>
+
+using namespace libzerocoin;
 
 int main() {
-    std::cout << "Testing unified libzerocoin...\n";
+    std::cout << "=== LibZerocoin C++20 Test ===\n\n";
 
     try {
-        // Test CBigNum
-        libzerocoin::CBigNum a(10);
-        libzerocoin::CBigNum b(5);
-        libzerocoin::CBigNum c = a + b;
+        // 1. Test BigNum
+        std::cout << "1. Testing BigNum...\n";
+        BigNum a(123);
+        BigNum b(456);
+        BigNum c = a + b;
+        assert(c.toHex() == "243"); // 123 + 456 = 579 = 0x243
 
-        std::cout << "10 + 5 = " << c.ToString() << std::endl;
+        // 2. Test Params Generation
+        std::cout << "2. Generating Zerocoin params...\n";
+        auto params = ZerocoinParams::generate();
+        assert(params->validate());
 
-        // Test hash
-        libzerocoin::uint256 hash = libzerocoin::Hash("test");
-        std::cout << "Hash test: " << (hash.IsNull() ? "FAILED" : "OK") << std::endl;
+        // 3. Test Coin Minting
+        std::cout << "3. Minting test coin...\n";
+        PrivateCoin coin(params, CoinDenomination::ZQ_ONE);
+        assert(coin.denomination() == CoinDenomination::ZQ_ONE);
 
-        // Test prime generation
-        std::cout << "Generating 128-bit prime...\n";
-        libzerocoin::CBigNum prime = libzerocoin::CBigNum::generatePrime(128);
-        std::cout << "Prime: " << prime.ToString().substr(0, 20) << "..." << std::endl;
+        // 4. Test Accumulator
+        std::cout << "4. Testing accumulator...\n";
+        Accumulator acc(params, params->g());
 
-        // Test params
-        libzerocoin::ZerocoinParams params;
-        std::cout << "ZerocoinParams created, security level: " << params.securityLevel << std::endl;
+        acc.accumulate(coin.publicCoin().value());
+        assert(acc.coinCount() == 1);
 
-        std::cout << "\n=== ALL TESTS PASSED ===\n";
+        // 5. Test Coin Spend
+        std::cout << "5. Testing coin spend...\n";
+        uint256 txHash = uint256::hash("test_transaction");
+        CoinSpend spend(params, coin, acc, 1, txHash);
+
+        assert(spend.coinSerialNumber() == coin.serialNumber());
+
+        std::cout << "\n✅ All tests passed!\n";
         return 0;
 
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "\n❌ Error: " << e.what() << "\n";
         return 1;
     }
 }
