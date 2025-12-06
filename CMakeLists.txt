@@ -44,12 +44,3 @@ if(BUILD_TESTS)
     target_link_libraries(zerocoin_test libzerocoin)
     add_test(NAME zerocoin_test COMMAND zerocoin_test)
 endif()
-
-# Install
-install(TARGETS libzerocoin
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(DIRECTORY include/ DESTINATION include)
