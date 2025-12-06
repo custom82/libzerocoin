@@ -15,6 +15,7 @@
 #include <cstdio>
 
 #include <boost/type_traits/is_fundamental.hpp>
+#include <boost/version.hpp>
 #include <boost/tuple/tuple.hpp>
 #include <boost/tuple/tuple_comparison.hpp>
 #include <boost/tuple/tuple_io.hpp>
@@ -369,6 +370,13 @@ CVarInt<I> WrapVarInt(I& n) { return CVarInt<I>(n); }
 // string
 template<typename C> unsigned int GetSerializeSize(const std::basic_string<C>& str, int, int=0);
 template<typename Stream, typename C> void Serialize(Stream& os, const std::basic_string<C>& str, int, int=0);
+#if BOOST_VERSION >= 108800
+template<typename Stream, typename C> void Serialize(Stream& os, const std::basic_string<C>& str, int, int=0);
+template<typename Stream, typename C> void Unserialize(Stream& is, std::basic_string<C>& str, int, int=0);
+#else
+template<typename Stream, typename C> void Serialize(Stream& os, const std::basic_string<C>& str, int, int=0);
+template<typename Stream, typename C> void Unserialize(Stream& is, std::basic_string<C>& str, int, int=0);
+#endif
 template<typename Stream, typename C> void Unserialize(Stream& is, std::basic_string<C>& str, int, int=0);
 
 // vector
