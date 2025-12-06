@@ -23,4 +23,4 @@ add_library(zerocoin ${ZEROCOIN_SOURCES})
 target_link_libraries(zerocoin PRIVATE OpenSSL::Crypto)
 target_compile_definitions(zerocoin PRIVATE -DOPENSSL_API_COMPAT=30000)
 target_compile_options(zerocoin PRIVATE -w)
-EOF
+
