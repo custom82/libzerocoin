@@ -8,6 +8,8 @@
 
 #include <stdexcept>
 #include <vector>
+#include <limits>
+#include <algorithm>
 #include <openssl/bn.h>
 #include <openssl/rand.h>
 #include "serialize.h"
@@ -106,12 +108,12 @@ public:
     CBigNum(short n)              { init(); if (n >= 0) setulong(n); else setint64(n); }
     CBigNum(int n)                { init(); if (n >= 0) setulong(n); else setint64(n); }
     CBigNum(long n)               { init(); if (n >= 0) setulong(n); else setint64(n); }
-    CBigNum(int64 n)              { init(); setint64(n); }
+    CBigNum(long long n)          { init(); setint64(n); }
     CBigNum(unsigned char n)      { init(); setulong(n); }
     CBigNum(unsigned short n)     { init(); setulong(n); }
     CBigNum(unsigned int n)       { init(); setulong(n); }
     CBigNum(unsigned long n)      { init(); setulong(n); }
-    CBigNum(uint64 n)             { init(); setuint64(n); }
+    CBigNum(unsigned long long n) { init(); setuint64(n); }
     explicit CBigNum(uint256 n)   { init(); setuint256(n); }
 
     explicit CBigNum(const std::vector<unsigned char>& vch)
@@ -128,37 +130,34 @@ public:
     static CBigNum generatePrime(unsigned int numBits, bool safe = false)
     {
         CBigNum ret;
-        CAutoBN_CTX pctx;
-        if(!BN_generate_prime_ex(ret.bn, numBits, (safe == true), NULL, NULL, NULL))
+        if(!BN_generate_prime_ex(ret.bn, numBits, (safe ? 1 : 0), NULL, NULL, NULL))
             throw bignum_error("CBigNum::generatePrime: BN_generate_prime_ex failed");
         return ret;
     }
 
     /**
-     * Generates a random number of bitSize bits.
-     * @param bitSize the bit length of the number.
-     * @return the random number.
+     * Generates a random number within a range.
+     * @param range the upper bound
+     * @return the random number
      */
     static CBigNum randBignum(const CBigNum& range)
     {
         CBigNum ret;
-        if(!BN_rand_range(ret.bn, range.bn)){
+        if(!BN_rand_range(ret.bn, range.bn))
             throw bignum_error("CBigNum::randBignum: BN_rand_range failed");
-        }
         return ret;
     }
 
     /**
-     * Generates a random number of bitSize bits.
-     * @param bitSize the bit length of the number.
-     * @return the random number.
+     * Generates a random number of k bits.
+     * @param k the bit length of the number
+     * @return the random number
      */
     static CBigNum randKBitBigum(uint32_t k)
     {
         CBigNum ret;
-        if(!BN_rand(ret.bn, k, -1, 0)){
+        if(!BN_rand(ret.bn, k, -1, 0))
             throw bignum_error("CBigNum::randKBitBigum: BN_rand failed");
-        }
         return ret;
     }
 
@@ -168,7 +167,7 @@ public:
      */
     int bitSize() const
     {
-        return  BN_num_bits(bn);
+        return BN_num_bits(bn);
     }
 
     void setulong(unsigned long n)
@@ -196,12 +195,12 @@ public:
             return (n > (unsigned long)std::numeric_limits<int>::max() + 1 ? std::numeric_limits<int>::min() : -(int)n);
     }
 
-    void setint64(int64 n)
+    void setint64(int64_t n)
     {
         unsigned char pch[sizeof(n) + 6];
         unsigned char* p = pch + 4;
         bool fNegative = false;
-        if (n < (int64)0)
+        if (n < (int64_t)0)
         {
             n = -n;
             fNegative = true;
@@ -231,7 +230,7 @@ public:
         BN_mpi2bn(pch, p - pch, bn);
     }
 
-    void setuint64(uint64 n)
+    void setuint64(uint64_t n)
     {
         unsigned char pch[sizeof(n) + 6];
         unsigned char* p = pch + 4;
@@ -312,7 +311,7 @@ public:
         vch2[2] = (nSize >> 8) & 0xff;
         vch2[3] = (nSize >> 0) & 0xff;
         // swap data to big endian
-        reverse_copy(vch.begin(), vch.end(), vch2.begin() + 4);
+        std::reverse_copy(vch.begin(), vch.end(), vch2.begin() + 4);
         BN_mpi2bn(&vch2[0], vch2.size(), bn);
     }
 
@@ -324,7 +323,7 @@ public:
         std::vector<unsigned char> vch(nSize);
         BN_bn2mpi(bn, &vch[0]);
         vch.erase(vch.begin(), vch.begin() + 4);
-        reverse(vch.begin(), vch.end());
+        std::reverse(vch.begin(), vch.end());
         return vch;
     }
 
@@ -353,7 +352,7 @@ public:
     CBigNum& SetCompact(unsigned int nCompact)
     {
         unsigned int nSize = nCompact >> 24;
-        bool fNegative     =(nCompact & 0x00800000) != 0;
+        bool fNegative     = (nCompact & 0x00800000) != 0;
         unsigned int nWord = nCompact & 0x007fffff;
         if (nSize <= 3)
         {
@@ -411,7 +410,12 @@ public:
             psz++;
 
         // hex string to bignum
-        static const signed char phexdigit[256] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,1,2,3,4,5,6,7,8,9,0,0,0,0,0,0, 0,0xa,0xb,0xc,0xd,0xe,0xf,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0xa,0xb,0xc,0xd,0xe,0xf,0,0,0,0,0,0,0,0,0 };
+        static const signed char phexdigit[256] = {
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0, 0,1,2,3,4,5,6,7,8,9,0,0,0,0,0,0,
+            0,0xa,0xb,0xc,0xd,0xe,0xf,0,0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+            0,0xa,0xb,0xc,0xd,0xe,0xf,0,0,0,0,0,0,0,0,0
+        };
         *this = 0;
         while (isxdigit(*psz))
         {
@@ -426,6 +430,7 @@ public:
     {
         CAutoBN_CTX pctx;
         CBigNum bn0 = 0;
+        CBigNum bnBase = nBase;
         CBigNum bn = *this;
         std::string str;
         BN_set_negative(bn.bn, false);
@@ -435,7 +440,7 @@ public:
             return "0";
         while (BN_cmp(bn.bn, bn0.bn) > 0)
         {
-            if (!BN_div(dv.bn, rem.bn, bn.bn, BN_value_one() * nBase, pctx))
+            if (!BN_div(dv.bn, rem.bn, bn.bn, bnBase.bn, pctx))
                 throw bignum_error("CBigNum::ToString() : BN_div failed");
             bn = dv;
             unsigned int c = rem.getulong();
@@ -443,7 +448,7 @@ public:
         }
         if (BN_is_negative(bn.bn))
             str += "-";
-        reverse(str.begin(), str.end());
+        std::reverse(str.begin(), str.end());
         return str;
     }
 
@@ -509,8 +514,8 @@ public:
     CBigNum& operator%=(const CBigNum& b)
     {
         CAutoBN_CTX pctx;
-        if (!BN_div(NULL, bn, bn, b.bn, pctx))
-            throw bignum_error("CBigNum::operator%= : BN_div failed");
+        if (!BN_mod(bn, bn, b.bn, pctx))
+            throw bignum_error("CBigNum::operator%= : BN_mod failed");
         return *this;
     }
 
@@ -524,7 +529,6 @@ public:
     CBigNum& operator>>=(unsigned int shift)
     {
         // Note: BN_rshift segfaults on 64-bit if 2^shift is greater than the number
-        //   if built on ubuntu 9.04 or 9.10, probably depends on version of OpenSSL
         CBigNum a = 1;
         a <<= shift;
         if (BN_cmp(a.bn, bn) > 0)
@@ -537,7 +541,6 @@ public:
             throw bignum_error("CBigNum::operator>>= : BN_rshift failed");
         return *this;
     }
-
 
     CBigNum& operator++()
     {
@@ -572,10 +575,6 @@ public:
         --(*this);
         return ret;
     }
-
-    friend inline const CBigNum operator-(const CBigNum& a, const CBigNum& b);
-    friend inline const CBigNum operator/(const CBigNum& a, const CBigNum& b);
-    friend inline const CBigNum operator%(const CBigNum& a, const CBigNum& b);
 
     // Methods for modular arithmetic
     CBigNum pow(const CBigNum& e) const {
@@ -613,7 +612,7 @@ public:
     /**
      * Calculates the inverse of this element mod m.
      * i.e. i such that this*i = 1 mod m
-     * @param m the modu
+     * @param m the modulus
      * @return the inverse
      */
     CBigNum inverse(const CBigNum& m) const {
@@ -625,21 +624,8 @@ public:
     }
 
     /**
-     * Generates a random (safe) prime of numBits bits
-     * @param numBits the number of bits
-     * @param safe true for a safe prime
-     * @return the prime
-     */
-    static CBigNum generatePrime(unsigned int numBits, bool safe = false) {
-        CBigNum ret;
-        if(!BN_generate_prime_ex(ret.bn, numBits, (safe == true), NULL, NULL, NULL))
-            throw bignum_error("CBigNum::generatePrime: BN_generate_prime_ex failed");
-        return ret;
-    }
-
-    /**
      * Calculates the greatest common divisor (GCD) of two numbers.
-     * @param m the second element
+     * @param b the second element
      * @return the GCD
      */
     CBigNum gcd(const CBigNum& b) const {
@@ -668,18 +654,27 @@ public:
         return BN_is_one(bn);
     }
 
-    bool operator!() const
-    {
+    bool isZero() const {
         return BN_is_zero(bn);
     }
 
-    // Access to internal BIGNUM pointer (use with caution!)
+    // Access to internal BIGNUM pointer
     BIGNUM* get() { return bn; }
     const BIGNUM* get() const { return bn; }
 
-    // For compatibility with existing code that expects implicit conversion
+    // For compatibility with existing code
     operator BIGNUM*() { return bn; }
     operator const BIGNUM*() const { return bn; }
+
+    // Helper function to get BN_value_one()
+    static const BIGNUM* BN_value_one() {
+        static BIGNUM* one = NULL;
+        if (one == NULL) {
+            one = BN_new();
+            BN_one(one);
+        }
+        return one;
+    }
 };
 
 inline const CBigNum operator+(const CBigNum& a, const CBigNum& b)
