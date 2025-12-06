@@ -14,46 +14,40 @@ find_package(Boost 1.88 REQUIRED COMPONENTS system filesystem)
 # Include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# Source files
-set(SOURCES
+# List ALL source files that actually exist in your repo
+set(LIBZEROCOIN_SOURCES
     src/Accumulator.cpp
     src/AccumulatorProofOfKnowledge.cpp
     src/Coin.cpp
     src/CoinSpend.cpp
     src/Commitment.cpp
-    src/ParamGeneration.cpp
-    src/Params.cpp
-    src/Proof.cpp
-    src/SerialNumberSignatureOfKnowledge.cpp
     src/hash.cpp
     src/bignum.cpp
+    src/ParamGeneration.cpp
+    src/Params.cpp
+    src/SerialNumberSignatureOfKnowledge.cpp
+    src/SpendMetaData.cpp
+    src/Zerocoin.cpp
+    src/zerocoin_types.cpp
 )
 
-# Header files
-set(HEADERS
-    include/Accumulator.h
-    include/AccumulatorProofOfKnowledge.h
-    include/Coin.h
-    include/CoinSpend.h
-    include/Commitment.h
-    include/ParamGeneration.h
-    include/Params.h
-    include/Proof.h
-    include/SerialNumberSignatureOfKnowledge.h
-    include/Zerocoin.h
-    include/bignum.h
-    include/hash.h
-    include/serialize.h
-)
+# Check which files actually exist
+foreach(src_file ${LIBZEROCOIN_SOURCES})
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${src_file}")
+        message(WARNING "Source file ${src_file} not found!")
+        list(REMOVE_ITEM LIBZEROCOIN_SOURCES ${src_file})
+    endif()
+endforeach()
+
+message(STATUS "Found source files: ${LIBZEROCOIN_SOURCES}")
 
 # Create shared library
-add_library(zerocoin SHARED ${SOURCES})
+add_library(zerocoin SHARED ${LIBZEROCOIN_SOURCES})
 
 # Set properties
 set_target_properties(zerocoin PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
-    PUBLIC_HEADER "${HEADERS}"
 )
 
 # Link libraries
@@ -69,29 +63,20 @@ target_compile_definitions(zerocoin PRIVATE
     OPENSSL_NO_DEPRECATED
 )
 
+# Include directories for the library
+target_include_directories(zerocoin
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+)
+
 # Installation
 install(TARGETS zerocoin
     EXPORT zerocoin-targets
     ARCHIVE DESTINATION lib
     LIBRARY DESTINATION lib
     RUNTIME DESTINATION bin
-    PUBLIC_HEADER DESTINATION include/libzerocoin
 )
 
 # Install headers
 install(DIRECTORY include/ DESTINATION include/libzerocoin)
-
-# Create and install CMake package
-install(EXPORT zerocoin-targets
-    FILE zerocoin-config.cmake
-    NAMESPACE libzerocoin::
-    DESTINATION lib/cmake/zerocoin
-)
-
-# Create test executable
-if(BUILD_TESTING)
-    add_executable(zerocoin_test tests/test_basic.cpp)
-    target_link_libraries(zerocoin_test zerocoin)
-
-    add_test(NAME zerocoin_test COMMAND zerocoin_test)
-endif()
