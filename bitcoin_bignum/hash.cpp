@@ -1,58 +1,80 @@
-#include "hash.h"
+#ifndef BITCOIN_HASH_H
+#define BITCOIN_HASH_H
 
-inline uint32_t ROTL32 ( uint32_t x, int8_t r )
-{
-    return (x << r) | (x >> (32 - r));
-}
+#include <cstdint>
+#include <string>
+#include <vector>
+#include <cstring>
 
-unsigned int MurmurHash3(unsigned int nHashSeed, const std::vector<unsigned char>& vDataToHash)
-{
-    // The following is MurmurHash3 (x86_32), see http://code.google.com/p/smhasher/source/browse/trunk/MurmurHash3.cpp
-    uint32_t h1 = nHashSeed;
-    const uint32_t c1 = 0xcc9e2d51;
-    const uint32_t c2 = 0x1b873593;
+#include <openssl/sha.h>
 
-    const int nblocks = vDataToHash.size() / 4;
+#include "uint256.h"
+#include "serialize.h"
 
-    //----------
-    // body
-    const uint32_t * blocks = (const uint32_t *)(&vDataToHash[0] + nblocks*4);
+// Writer stile Bitcoin: accumula dati e produce SHA256
+class CHashWriter {
+private:
+    SHA256_CTX ctx;
+    int nType;
+    int nVersion;
 
-    for(int i = -nblocks; i; i++)
+public:
+    CHashWriter(int nTypeIn, int nVersionIn)
+    : nType(nTypeIn), nVersion(nVersionIn)
     {
-        uint32_t k1 = blocks[i];
-
-        k1 *= c1;
-        k1 = ROTL32(k1,15);
-        k1 *= c2;
-
-        h1 ^= k1;
-        h1 = ROTL32(h1,13); 
-        h1 = h1*5+0xe6546b64;
+        SHA256_Init(&ctx);
     }
 
-    //----------
-    // tail
-    const uint8_t * tail = (const uint8_t*)(&vDataToHash[0] + nblocks*4);
-
-    uint32_t k1 = 0;
-
-    switch(vDataToHash.size() & 3)
+    CHashWriter& write(const char* pch, size_t size)
     {
-    case 3: k1 ^= tail[2] << 16;
-    case 2: k1 ^= tail[1] << 8;
-    case 1: k1 ^= tail[0];
-            k1 *= c1; k1 = ROTL32(k1,15); k1 *= c2; h1 ^= k1;
-    };
+        SHA256_Update(&ctx,
+                      reinterpret_cast<const unsigned char*>(pch),
+                      size);
+        return *this;
+    }
 
-    //----------
-    // finalization
-    h1 ^= vDataToHash.size();
-    h1 ^= h1 >> 16;
-    h1 *= 0x85ebca6b;
-    h1 ^= h1 >> 13;
-    h1 *= 0xc2b2ae35;
-    h1 ^= h1 >> 16;
+    template <typename T>
+    CHashWriter& operator<<(const T& obj)
+    {
+        ::Serialize(*this, obj, nType, nVersion);
+        return *this;
+    }
 
-    return h1;
+    void GetHash(unsigned char* out)
+    {
+        SHA256_CTX ctxCopy = ctx;
+        SHA256_Final(out, &ctxCopy);
+    }
+
+    uint256 GetHash()
+    {
+        uint256 result;
+        GetHash(reinterpret_cast<unsigned char*>(&result));
+        return result;
+    }
+};
+
+// Hash semplice di un buffer
+inline uint256 Hash(const unsigned char* begin, const unsigned char* end)
+{
+    uint256 result;
+    SHA256_CTX ctx;
+
+    SHA256_Init(&ctx);
+    SHA256_Update(&ctx, begin, end - begin);
+    SHA256_Final(reinterpret_cast<unsigned char*>(&result), &ctx);
+
+    return result;
 }
+
+// Hash Bitcoin-compatibile di un oggetto serializzabile
+template <typename T>
+uint256 Hash(const T& v)
+{
+    CDataStream ss(SER_GETHASH, 0);
+    ss << v;
+    return Hash(reinterpret_cast<const unsigned char*>(&ss[0]),
+                reinterpret_cast<const unsigned char*>(&ss[0]) + ss.size());
+}
+
+#endif // BITCOIN_HASH_H

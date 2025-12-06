@@ -9,6 +9,29 @@
 
 #include "uint256.h"
 
+// RAII wrapper BN_CTX per evitare leak
+class CAutoBN_CTX {
+private:
+    BN_CTX* ctx;
+
+public:
+    CAutoBN_CTX()
+    {
+        ctx = BN_CTX_new();
+        if (!ctx)
+            throw std::runtime_error("BN_CTX_new failed");
+    }
+
+    ~CAutoBN_CTX()
+    {
+        if (ctx)
+            BN_CTX_free(ctx);
+    }
+
+    operator BN_CTX*() { return ctx; }
+    operator BN_CTX*() const { return ctx; }
+};
+
 class CBigNum
 {
 private:
@@ -24,13 +47,10 @@ public:
 
     CBigNum& operator=(const CBigNum& b);
 
-    // Conversions
     operator BIGNUM*() { return bn; }
     operator const BIGNUM*() const { return bn; }
     BIGNUM* get() { return bn; }
     const BIGNUM* get() const { return bn; }
-
-    // Core functional declarations moved here from inline definitions:
 
     std::string ToString(int base = 10) const;
     void SetHex(const std::string& hex);
@@ -51,20 +71,17 @@ public:
     CBigNum& operator<<=(unsigned int shift);
     CBigNum& operator>>=(unsigned int shift);
 
-    // Modular operations
     CBigNum pow_mod(const CBigNum& e, const CBigNum& m) const;
     CBigNum mul_mod(const CBigNum& b, const CBigNum& m) const;
     CBigNum add_mod(const CBigNum& b, const CBigNum& m) const;
     CBigNum sub_mod(const CBigNum& b, const CBigNum& m) const;
     CBigNum inverse(const CBigNum& m) const;
 
-    // Prime generation and tests
     static CBigNum generatePrime(uint32_t bits, bool safe = false);
     bool isPrime(int checks = 0, BN_GENCB* cb = nullptr) const;
 
-    // Other utilities
     CBigNum gcd(const CBigNum& b) const;
     CBigNum sqrt_mod(const CBigNum& p) const;
 };
 
-#endif
+#endif // BITCOIN_BIGNUM_H
