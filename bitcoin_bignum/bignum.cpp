@@ -1,13 +1,12 @@
 #include "bignum.h"
-
 #include <openssl/rand.h>
 #include <openssl/bn.h>
 #include <stdexcept>
 #include <cstring>
 #include <cctype>
+#include <algorithm>
 
 extern "C" {
-    // Helper function for hex digit conversion
     int HexDigit(char c) {
         if (c >= '0' && c <= '9')
             return c - '0';
@@ -19,7 +18,6 @@ extern "C" {
     }
 }
 
-// Global hex digit table
 const char phexdigit[256] = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
@@ -62,8 +60,7 @@ void CBigNum::SetHex(const std::string& str) {
 }
 
 void CBigNum::setvch(const std::vector<unsigned char>& vch) {
-    BN_bin2bn(vch.data(), vch.size(), bn);
-    if (!bn)
+    if (!BN_bin2bn(vch.data(), vch.size(), bn))
         throw bignum_error("CBigNum::setvch : BN_bin2bn failed");
 }
 
@@ -74,50 +71,28 @@ std::vector<unsigned char> CBigNum::getvch() const {
 }
 
 void CBigNum::setuint64(uint64 n) {
-    unsigned char pch[sizeof(n) + 6];
-    unsigned char* p = pch + 4;
-    bool fLeadingZeroes = true;
-
+    std::vector<unsigned char> vch(8);
     for (int i = 0; i < 8; i++) {
-        unsigned char c = (n >> 56) & 0xff;
-        n <<= 8;
-        if (fLeadingZeroes && c == 0)
-            continue;
-        if (fLeadingZeroes) {
-            p[-1] = (i >> 24) & 0xff;
-            p[-2] = (i >> 16) & 0xff;
-            p[-3] = (i >> 8) & 0xff;
-            p[-4] = (i) & 0xff;
-            fLeadingZeroes = false;
-        }
-        *p++ = c;
+        vch[7-i] = (n >> (8*i)) & 0xff;
     }
-
-    unsigned int nSize = p - (pch + 4);
-    pch[0] = (nSize >> 24) & 0xff;
-    pch[1] = (nSize >> 16) & 0xff;
-    pch[2] = (nSize >> 8) & 0xff;
-    pch[3] = (nSize) & 0xff;
-
-    BN_mpi2bn(pch, p - pch, bn);
-    if (!bn)
-        throw bignum_error("CBigNum::setuint64 : BN_mpi2bn failed");
+    if (!BN_bin2bn(vch.data(), 8, bn))
+        throw bignum_error("CBigNum::setuint64 : BN_bin2bn failed");
 }
 
-void CBigNum::setint64(int64 sn) {
-    uint64 n = sn < 0 ? -sn : sn;
-    setuint64(n);
-    if (sn < 0)
+void CBigNum::setint64(int64 n) {
+    if (n >= 0) {
+        setuint64(static_cast<uint64>(n));
+    } else {
+        setuint64(static_cast<uint64>(-n));
         BN_set_negative(bn, 1);
+    }
 }
 
 void CBigNum::setuint256(const uint256& n) {
-    // Convert uint256 to vector (little-endian)
     std::vector<unsigned char> vch(32);
     memcpy(vch.data(), n.begin(), 32);
-    std::reverse(vch.begin(), vch.end()); // Convert to big-endian
-    BN_bin2bn(vch.data(), vch.size(), bn);
-    if (!bn)
+    std::reverse(vch.begin(), vch.end());
+    if (!BN_bin2bn(vch.data(), 32, bn))
         throw bignum_error("CBigNum::setuint256 : BN_bin2bn failed");
 }
 
@@ -152,9 +127,8 @@ uint256 CBigNum::getuint256() const {
         throw bignum_error("CBigNum::getuint256 : number too large for uint256");
     }
 
-    // Pad with zeros if necessary
     vch.resize(32, 0);
-    std::reverse(vch.begin(), vch.end()); // Convert from big-endian
+    std::reverse(vch.begin(), vch.end());
 
     uint256 result;
     memcpy(result.begin(), vch.data(), 32);
@@ -283,11 +257,6 @@ CBigNum CBigNum::gcd(const CBigNum& b) const {
 CBigNum CBigNum::sqrt_mod(const CBigNum& p) const {
     CAutoBN_CTX ctx;
     CBigNum ret;
-
-    // Check if p is prime
-    if (!BN_is_prime_ex(p.bn, 20, nullptr, nullptr)) {
-        throw bignum_error("CBigNum::sqrt_mod : p is not prime");
-    }
 
     if (!BN_mod_sqrt(ret.bn, bn, p.bn, ctx)) {
         throw bignum_error("CBigNum::sqrt_mod : BN_mod_sqrt failed");
