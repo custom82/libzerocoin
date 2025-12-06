@@ -1,13 +1,17 @@
-#ifndef BIGNUM_ERROR_H
-#define BIGNUM_ERROR_H
-
-#include <exception>
+#include <stdexcept>
+#include <string>
 
 class bignum_error : public std::exception {
 public:
-    const char* what() const noexcept override {
-        return "Bignum operation failed";
-    }
-};
+    // Costruttore che accetta una stringa
+    explicit bignum_error(const std::string& message)
+    : msg(message) {}
 
-#endif // BIGNUM_ERROR_H
+    // Funzione che restituisce il messaggio di errore
+    const char* what() const noexcept override {
+        return msg.c_str();
+    }
+
+private:
+    std::string msg;  // Messaggio di errore
+};
