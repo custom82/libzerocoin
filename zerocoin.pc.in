@@ -3,9 +3,9 @@ exec_prefix=@exec_prefix@
 libdir=@libdir@
 includedir=@includedir@
 
-Name: zerocoin
-Description: Zerocoin cryptographic routines library
-Requires:
-Version: @LIBVER@
-Libs: -L${libdir} -lzerocoin -lcrypto
-Cflags: -I${includedir}
+Name: libzerocoin
+Description: Zerocoin cryptographic library
+Version: @PACKAGE_VERSION@
+Requires: openssl >= 3.0.0, gmp >= 6.3.0
+Libs: -L${libdir} -lzerocoin
+Cflags: -I${includedir}/zerocoin -I${includedir}/zerocoin/bitcoin_bignum -DOPENSSL_API_COMPAT=0x30000000L

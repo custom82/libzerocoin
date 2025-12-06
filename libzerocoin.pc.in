@@ -1,0 +1,12 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: @PACKAGE_NAME@
+Description: Cryptographic library for the Zerocoin protocol
+Version: @PACKAGE_VERSION@
+Requires: openssl
+Libs: -L${libdir} -lzerocoin
+Libs.private: -lgmp
+Cflags: -I${includedir}
