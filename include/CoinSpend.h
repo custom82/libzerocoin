@@ -1,7 +1,6 @@
 #ifndef COIN_SPEND_H
 #define COIN_SPEND_H
 
-#include "CBigNum.h" // Aggiunto include per CBigNum
 
 class CoinSpend {
 public:

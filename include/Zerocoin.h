@@ -2,7 +2,6 @@
 #define ZEROCOIN_H
 
 #include "Accumulator.h"
-#include "CBigNum.h"
 
 namespace libzerocoin {
 
