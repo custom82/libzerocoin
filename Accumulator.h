@@ -3,7 +3,6 @@
 
 #include "src/serialize_stub.h"
 #include "src/zerocoin_types.h"
-
 #include "bitcoin_bignum/bignum.h"
 #include "Params.h"
 #include "Coin.h"
@@ -33,6 +32,8 @@ namespace libzerocoin {
 
 		CoinDenomination getDenomination() const { return denom; }
 
+		const CBigNum& getValue() const { return value; }
+
 		Accumulator& operator+=(const PublicCoin& c)
 		{
 			accumulate(c);
@@ -46,20 +47,24 @@ namespace libzerocoin {
 	{
 	private:
 		const ZerocoinParams* params;
-		const PublicCoin element;
+		PublicCoin element;
 		CBigNum witnessValue;
 
 	public:
 		AccumulatorWitness(const ZerocoinParams* p,
 						   const Accumulator& a,
 					 const PublicCoin& coin)
-		: params(p), element(coin), witnessValue(a.value) {}
+		: params(p), element(coin), witnessValue(a.getValue()) {}
 
 		void AddElement(const PublicCoin& c)
 		{
-			witnessValue = witnessValue.mul_mod(c.value,
-												params->accumulatorParams.accumulatorModulus);
+			witnessValue = witnessValue.mul_mod(
+				c.value,
+				params->accumulatorParams.accumulatorModulus
+			);
 		}
+
+		const CBigNum& getValue() const { return witnessValue; }
 
 		ADD_SERIALIZE_METHODS;
 	};
