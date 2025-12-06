@@ -12,7 +12,27 @@
 #include "Accumulator.h"
 #include "Commitment.h"
 #include "Params.h"
-#include "serialize.h"
+
+// Serialization macros
+#ifndef SERIALIZE_H
+#define ADD_SERIALIZE_METHODS \
+template<typename Stream, typename Operation> \
+inline void SerializationOp(Stream& s, Operation ser_action)
+
+#define READWRITE(...) { __VA_ARGS__ }
+
+template<typename Stream>
+inline void Serialize(Stream& s, const unsigned char* data, size_t size) {
+	s.write(reinterpret_cast<const char*>(data), size);
+}
+
+template<typename Stream>
+inline void Unserialize(Stream& s, unsigned char* data, size_t size) {
+	s.read(reinterpret_cast<char*>(data), size);
+}
+
+#define FLATDATA(data) data, sizeof(data)
+#endif
 
 // OpenSSL 3.5 compatibility
 #ifdef __clang__

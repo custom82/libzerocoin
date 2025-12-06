@@ -37,10 +37,11 @@ namespace libzerocoin {
 		 * @param checksum the checksum of the accumulator
 		 * @param accumulatorPoK proof of knowledge of the accumulator
 		 * @param serialNumberSoK signature of knowledge of the serial number
+		 * @param witness the accumulator witness
 		 * @param newAccumulator the new accumulator after the spend
 		 * @param newChecksum the new checksum after the spend
 		 * @param commitment the commitment to the serial number and randomness
-		 * @param denomination the denomination of the coin
+		 * @param d the denomination of the coin
 		 */
 		CoinSpend(const ZerocoinParams* p, const PublicCoin& coin, Accumulator& a, const uint32_t checksum,
 				  const AccumulatorProofOfKnowledge& accumulatorPoK, const SerialNumberSignatureOfKnowledge& serialNumberSoK,
@@ -54,7 +55,7 @@ namespace libzerocoin {
 		 * @param a the accumulator containing the coin
 		 * @param checksum the checksum of the accumulator
 		 * @param msghash hash of the transaction
-		 * @param metadat the spend metadata
+		 * @param metadata the spend metadata
 		 */
 		CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin, Accumulator& a, const uint32_t checksum,
 				  const uint256& msghash, const SpendMetaData& metadata);

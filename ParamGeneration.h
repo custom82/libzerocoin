@@ -119,32 +119,7 @@ namespace libzerocoin {
          *
          * @return true if valid
          */
-        bool validate() const {
-            if (modulus <= CBigNum(0) || groupOrder <= CBigNum(0) ||
-                g <= CBigNum(0) || h <= CBigNum(0)) {
-                return false;
-                }
-
-                // Check that g and h are in the group
-                if (g >= modulus || h >= modulus) {
-                    return false;
-                }
-
-                // Check that g^groupOrder mod modulus == 1
-                // and h^groupOrder mod modulus == 1
-                CAutoBN_CTX ctx;
-                CBigNum temp1, temp2;
-
-                if (!BN_mod_exp(temp1.get(), g.get(), groupOrder.get(), modulus.get(), ctx)) {
-                    return false;
-                }
-
-                if (!BN_mod_exp(temp2.get(), h.get(), groupOrder.get(), modulus.get(), ctx)) {
-                    return false;
-                }
-
-                return (temp1 == CBigNum(1) && temp2 == CBigNum(1));
-        }
+        bool validate() const;
 
         ADD_SERIALIZE_METHODS;
         template <typename Stream, typename Operation>
@@ -176,15 +151,7 @@ namespace libzerocoin {
          *
          * @return true if valid
          */
-        bool validate() const {
-            if (accumulatorModulus <= CBigNum(0) || accumulatorBase <= CBigNum(0) ||
-                minCoinValue <= CBigNum(0) || maxCoinValue <= CBigNum(0) ||
-                k_prime <= CBigNum(0) || k_dprime <= CBigNum(0)) {
-                return false;
-                }
-
-                return true;
-        }
+        bool validate() const;
 
         ADD_SERIALIZE_METHODS;
         template <typename Stream, typename Operation>
@@ -226,13 +193,7 @@ namespace libzerocoin {
          * @param security Security level
          * @return true if successful
          */
-        bool initialize(const CBigNum& N, uint32_t security) {
-            // Basic initialization
-            // Actual implementation would generate proper parameters
-            securityLevel = security;
-            initialized = true;
-            return true;
-        }
+        bool initialize(const CBigNum& N, uint32_t security);
 
         /**
          * @brief Get test parameters for development

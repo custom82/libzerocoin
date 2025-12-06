@@ -7,9 +7,7 @@
 #define SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H
 
 #include "bitcoin_bignum/bignum.h"
-#include "bitcoin_bignum/hash.h"
 #include "Params.h"
-#include "serialize.h"
 
 // OpenSSL 3.5 compatibility
 #ifdef __clang__
@@ -18,6 +16,9 @@
 #endif
 
 namespace libzerocoin {
+
+	// Forward declaration
+	class Commitment;
 
 	/** A Signature of Knowledge on the hash of a commitment to a coin's serial number.
 	 */
