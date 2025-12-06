@@ -1,5 +1,5 @@
 #include "ParamGeneration.h"
-#include "bitcoin_bignum/hash.h" // FIX per CHashWriter
+#include "hash.h" // FIX per CHashWriter
 #include "serialize_stub.h"
 
 // Default seed generator bits count:

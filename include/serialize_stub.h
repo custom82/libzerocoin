@@ -5,8 +5,8 @@
 #include <type_traits>
 
 // Usa le primitive bignum e hash già presenti nel tree "reale"
-#include "bitcoin_bignum/bignum.h"
-#include "bitcoin_bignum/hash.h"
+#include "bignum.h"
+#include "hash.h"
 #include "uint256.h"
 
 namespace libzerocoin

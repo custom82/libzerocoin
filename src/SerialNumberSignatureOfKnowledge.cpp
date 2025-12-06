@@ -3,7 +3,7 @@
 
 #include "serialize_stub.h"
 #include "zerocoin_types.h"
-#include "bitcoin_bignum/bignum.h"
+#include "bignum.h"
 #include "Params.h"
 #include "Coin.h"
 

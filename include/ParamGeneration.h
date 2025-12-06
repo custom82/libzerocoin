@@ -1,7 +1,7 @@
 #ifndef PARAM_GENERATION_H
 #define PARAM_GENERATION_H
 
-#include "bitcoin_bignum/bignum.h"
+#include "bignum.h"
 #include "serialize.h"
 
 class IntegerGroupParams {

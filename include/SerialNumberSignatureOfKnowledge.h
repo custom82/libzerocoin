@@ -6,7 +6,7 @@
 #ifndef SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H
 #define SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H
 
-#include "bitcoin_bignum/bignum.h"
+#include "bignum.h"
 #include "Params.h"
 
 // OpenSSL 3.5 compatibility
