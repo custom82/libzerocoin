@@ -18,6 +18,7 @@ set(ZEROCOIN_SOURCES
     src/Accumulator.cpp
     src/Coin.cpp
     src/Commitment.cpp
+    src/ParamGeneration.cpp
 )
 
 add_library(zerocoin ${ZEROCOIN_SOURCES})
