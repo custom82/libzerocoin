@@ -1,3 +1,6 @@
+#ifndef OPENSSL_API_COMPAT
+#define OPENSSL_API_COMPAT 0x30000000L
+#endif
 // Modified from bitcon's bignum wrapper.
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2012 The Bitcoin developers
@@ -21,6 +24,12 @@ class bignum_error : public std::runtime_error
 {
 public:
     explicit bignum_error(const std::string& str) : std::runtime_error(str) {}
+    // Dichiarazioni aggiunte per compatibilità
+    BIGNUM* getBN() { return bn; }
+    const BIGNUM* getBN() const { return bn; }
+    BIGNUM** ref() { return &bn; }
+    operator BIGNUM*() { return bn; }
+    operator const BIGNUM*() const { return bn; }
 };
 
 
@@ -49,12 +58,23 @@ public:
     BN_CTX& operator*() { return *pctx; }
     BN_CTX** operator&() { return &pctx; }
     bool operator!() { return (pctx == NULL); }
+    // Dichiarazioni aggiunte per compatibilità
+    BIGNUM* getBN() { return bn; }
+    const BIGNUM* getBN() const { return bn; }
+    BIGNUM** ref() { return &bn; }
+    operator BIGNUM*() { return bn; }
+    operator const BIGNUM*() const { return bn; }
 };
 
 
 /** C++ wrapper for BIGNUM (OpenSSL bignum) */
 class CBigNum
 class CBigNum
+{
+private:
+    BIGNUM* bn;
+    
+public:
 {
 public:
     BIGNUM* bn;
@@ -615,6 +635,12 @@ public:
     friend inline const CBigNum operator%(const CBigNum& a, const CBigNum& b);
     friend inline const CBigNum operator*(const CBigNum& a, const CBigNum& b);
     friend inline bool operator<(const CBigNum& a, const CBigNum& b);
+    // Dichiarazioni aggiunte per compatibilità
+    BIGNUM* getBN() { return bn; }
+    const BIGNUM* getBN() const { return bn; }
+    BIGNUM** ref() { return &bn; }
+    operator BIGNUM*() { return bn; }
+    operator const BIGNUM*() const { return bn; }
 };
 
 inline const CBigNum operator+(const CBigNum& a, const CBigNum& b)
