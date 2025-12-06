@@ -12,15 +12,14 @@ find_package(OpenSSL 3.0 REQUIRED)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# Aggiungi Accumulator.cpp
 set(ZEROCOIN_SOURCES
     src/bignum.cpp
     src/Params.cpp
     src/Accumulator.cpp
+    src/Coin.cpp
 )
 
 add_library(zerocoin ${ZEROCOIN_SOURCES})
 target_link_libraries(zerocoin PRIVATE OpenSSL::Crypto)
 target_compile_definitions(zerocoin PRIVATE -DOPENSSL_API_COMPAT=30000)
 target_compile_options(zerocoin PRIVATE -w)
-

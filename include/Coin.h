@@ -1,22 +1,26 @@
-#ifndef LIBZEROCOIN_COIN_H
-#define LIBZEROCOIN_COIN_H
+#ifndef COIN_H
+#define COIN_H
 
-#include "bignum.h"  // Aggiungi CBigNum
+#include "zerocoin_defs.h"
 
-namespace libzerocoin
-{
+namespace libzerocoin {
 
-	class PublicCoin
-	{
+	class PublicCoin {
 	private:
-		CBigNum value;  // Usa CBigNum
-		// Altri membri...
+		const ZerocoinParams* params;
+		Bignum value;
+		CoinDenomination denomination;
 
 	public:
 		PublicCoin(const ZerocoinParams* p, const CBigNum& coin);
-		// Altri metodi...
+		PublicCoin(const ZerocoinParams* p, const CBigNum& coin, const CoinDenomination d);
+
+		bool validate() const;
+
+		const Bignum& getValue() const { return value; }
+		CoinDenomination getDenomination() const { return denomination; }
 	};
 
 } // namespace libzerocoin
 
-#endif // LIBZEROCOIN_COIN_H
+#endif

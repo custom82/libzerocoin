@@ -5,21 +5,21 @@
 
 namespace libzerocoin {
 
-class PrivateCoin {
-public:
-    PrivateCoin(const ZerocoinParams* p, const CBigNum& coinValue);
+    class PrivateCoin {
+    private:
+        const ZerocoinParams* params;
+        Bignum serialNumber;
+        Bignum randomness;
+        unsigned char ecdsaSecretKey[32];
 
-    const PublicCoin& getPublicCoin() const;
-    const CBigNum& getSerialNumber() const;
-    const CBigNum& getRandomness() const;
-    const unsigned char* getEcdsaSecretKey() const;
+    public:
+        PrivateCoin(const ZerocoinParams* p, const CBigNum& coinValue);
 
-private:
-    const ZerocoinParams* params;
-    CBigNum serialNumber;
-    CBigNum randomness;
-    unsigned char ecdsaSecretKey[32];
-};
+        const PublicCoin& getPublicCoin() const;
+        const Bignum& getSerialNumber() const;
+        const Bignum& getRandomness() const;
+        const unsigned char* getEcdsaSecretKey() const;
+    };
 
 } // namespace libzerocoin
 
