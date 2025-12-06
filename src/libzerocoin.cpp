@@ -215,7 +215,6 @@ namespace libzerocoin {
         BN_CTX* ctx = BN_CTX_new();
         if (!ctx) throw std::bad_alloc();
 
-        // Use accessor methods for private members
         BN_mod_mul(
             value_.get(),
                    value_.get(),
@@ -232,7 +231,6 @@ namespace libzerocoin {
         BN_CTX* ctx = BN_CTX_new();
         if (!ctx) throw std::bad_alloc();
 
-        // Use accessor methods for private members
         BN_mod_mul(
             value_.get(),
                    value_.get(),
@@ -257,26 +255,28 @@ namespace libzerocoin {
                          Version version)
     : params_(std::move(params)),
     coinSerialNumber_(coin.serialNumber_),
-    accumulatorValue_(accumulator.getValue()),  // Correct order
+    accumulatorValue_(accumulator.getValue()),
     ptxHash_(ptxHash),
     accumulatorId_(accumulatorId),
     version_(version) {}
 
     bool CoinSpend::verify(const Accumulator& accumulator) const {
-        // Use accumulatorValue_ (not accumulatedValues_)
         if (accumulatorValue_.toHex() != accumulator.getValue().toHex()) {
             return false;
         }
-        // ... other validations
         return true;
     }
 
     void CoinSpend::generateAccumulatorProof(const Accumulator& accumulator, const CBigNum& witness) {
-        // Placeholder implementation
+        // Silence unused parameter warnings
+        (void)accumulator;
+        (void)witness;
+        // TODO: Implement actual proof generation
     }
 
     void CoinSpend::generateSerialNumberProof(const PrivateCoin& coin) {
-        // Placeholder implementation
+        (void)coin; // Silence unused parameter warning
+        // TODO: Implement actual proof generation
     }
 
 } // namespace libzerocoin
