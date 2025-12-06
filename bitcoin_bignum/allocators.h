@@ -7,7 +7,8 @@
 
 #include <string.h>
 #include <string>
-#include <boost/thread/mutex.hpp>
+#include <memory>
+#include <mutex>
 #include <map>
 #include <openssl/crypto.h> // for OPENSSL_cleanse()
 
@@ -46,7 +47,7 @@ template <class Locker> class LockedPageManagerBase
 {
 public:
     LockedPageManagerBase(size_t page_size):
-        page_size(page_size)
+    page_size(page_size)
     {
         // Determine bitmask for extracting page from address
         assert(!(page_size & (page_size-1))); // size must be power of two
@@ -56,7 +57,7 @@ public:
     // For all pages in affected range, increase lock count
     void LockRange(void *p, size_t size)
     {
-        boost::mutex::scoped_lock lock(mutex);
+        std::scoped_lock lock(mutex);
         if(!size) return;
         const size_t base_addr = reinterpret_cast<size_t>(p);
         const size_t start_page = base_addr & page_mask;
@@ -66,7 +67,9 @@ public:
             Histogram::iterator it = histogram.find(page);
             if(it == histogram.end()) // Newly locked page
             {
-                locker.Lock(reinterpret_cast<void*>(page), page_size);
+                if (!locker.Lock(reinterpret_cast<void*>(page), page_size)) {
+                    throw std::runtime_error("Failed to lock memory page");
+                }
                 histogram.insert(std::make_pair(page, 1));
             }
             else // Page was already locked; increase counter
@@ -79,7 +82,7 @@ public:
     // For all pages in affected range, decrease lock count
     void UnlockRange(void *p, size_t size)
     {
-        boost::mutex::scoped_lock lock(mutex);
+        std::scoped_lock lock(mutex);
         if(!size) return;
         const size_t base_addr = reinterpret_cast<size_t>(p);
         const size_t start_page = base_addr & page_mask;
@@ -87,13 +90,17 @@ public:
         for(size_t page = start_page; page <= end_page; page += page_size)
         {
             Histogram::iterator it = histogram.find(page);
-            assert(it != histogram.end()); // Cannot unlock an area that was not locked
+            if(it == histogram.end()) {
+                throw std::runtime_error("Cannot unlock an area that was not locked");
+            }
             // Decrease counter for page, when it is zero, the page will be unlocked
             it->second -= 1;
             if(it->second == 0) // Nothing on the page anymore that keeps it locked
             {
                 // Unlock page and remove the count from histogram
-                locker.Unlock(reinterpret_cast<void*>(page), page_size);
+                if (!locker.Unlock(reinterpret_cast<void*>(page), page_size)) {
+                    throw std::runtime_error("Failed to unlock memory page");
+                }
                 histogram.erase(it);
             }
         }
@@ -102,13 +109,31 @@ public:
     // Get number of locked pages for diagnostics
     int GetLockedPageCount()
     {
-        boost::mutex::scoped_lock lock(mutex);
-        return histogram.size();
+        std::scoped_lock lock(mutex);
+        return static_cast<int>(histogram.size());
+    }
+
+    // Check if memory is locked
+    bool IsLocked(void* p, size_t size)
+    {
+        std::scoped_lock lock(mutex);
+        if(!size) return false;
+        const size_t base_addr = reinterpret_cast<size_t>(p);
+        const size_t start_page = base_addr & page_mask;
+        const size_t end_page = (base_addr + size - 1) & page_mask;
+
+        for(size_t page = start_page; page <= end_page; page += page_size)
+        {
+            if (histogram.find(page) == histogram.end()) {
+                return false;
+            }
+        }
+        return true;
     }
 
 private:
     Locker locker;
-    boost::mutex mutex;
+    mutable std::mutex mutex;
     size_t page_size, page_mask;
     // map of page base address to lock count
     typedef std::map<size_t,int> Histogram;
@@ -119,15 +144,15 @@ private:
 static inline size_t GetSystemPageSize()
 {
     size_t page_size;
-#if defined(WIN32)
+    #if defined(WIN32)
     SYSTEM_INFO sSysInfo;
     GetSystemInfo(&sSysInfo);
-    page_size = sSysInfo.dwPageSize;
-#elif defined(PAGESIZE) // defined in limits.h
-    page_size = PAGESIZE;
-#else // assume some POSIX OS
-    page_size = sysconf(_SC_PAGESIZE);
-#endif
+    page_size = static_cast<size_t>(sSysInfo.dwPageSize);
+    #elif defined(PAGESIZE) // defined in limits.h
+    page_size = static_cast<size_t>(PAGESIZE);
+    #else // assume some POSIX OS
+    page_size = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    #endif
     return page_size;
 }
 
@@ -143,22 +168,23 @@ public:
      */
     bool Lock(const void *addr, size_t len)
     {
-#ifdef WIN32
-        return VirtualLock(const_cast<void*>(addr), len);
-#else
+        #ifdef WIN32
+        return VirtualLock(const_cast<void*>(addr), static_cast<SIZE_T>(len)) != 0;
+        #else
         return mlock(addr, len) == 0;
-#endif
+        #endif
     }
+
     /** Unlock memory pages.
      * addr and len must be a multiple of the system page size
      */
     bool Unlock(const void *addr, size_t len)
     {
-#ifdef WIN32
-        return VirtualUnlock(const_cast<void*>(addr), len);
-#else
+        #ifdef WIN32
+        return VirtualUnlock(const_cast<void*>(addr), static_cast<SIZE_T>(len)) != 0;
+        #else
         return munlock(addr, len) == 0;
-#endif
+        #endif
     }
 };
 
@@ -169,10 +195,19 @@ public:
 class LockedPageManager: public LockedPageManagerBase<MemoryPageLocker>
 {
 public:
-    static LockedPageManager instance; // instantiated in util.cpp
+    static LockedPageManager& Instance()
+    {
+        static LockedPageManager instance;
+        return instance;
+    }
+
+    // Delete copy constructor and assignment operator
+    LockedPageManager(const LockedPageManager&) = delete;
+    LockedPageManager& operator=(const LockedPageManager&) = delete;
+
 private:
     LockedPageManager():
-        LockedPageManagerBase<MemoryPageLocker>(GetSystemPageSize())
+    LockedPageManagerBase<MemoryPageLocker>(GetSystemPageSize())
     {}
 };
 
@@ -181,78 +216,173 @@ private:
 // out of memory and clears its contents before deletion.
 //
 template<typename T>
-struct secure_allocator : public std::allocator<T>
+class secure_allocator
 {
-    // MSVC8 default copy constructor is broken
-    typedef std::allocator<T> base;
-    typedef typename base::size_type size_type;
-    typedef typename base::difference_type  difference_type;
-    typedef typename base::pointer pointer;
-    typedef typename base::const_pointer const_pointer;
-    typedef typename base::reference reference;
-    typedef typename base::const_reference const_reference;
-    typedef typename base::value_type value_type;
-    secure_allocator() throw() {}
-    secure_allocator(const secure_allocator& a) throw() : base(a) {}
-    template <typename U>
-    secure_allocator(const secure_allocator<U>& a) throw() : base(a) {}
-    ~secure_allocator() throw() {}
-    template<typename _Other> struct rebind
-    { typedef secure_allocator<_Other> other; };
+public:
+    using value_type = T;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+    using pointer = T*;
+    using const_pointer = const T*;
+    using reference = T&;
+    using const_reference = const T&;
 
-    T* allocate(std::size_t n, const void *hint = 0)
+    secure_allocator() noexcept = default;
+
+    template<typename U>
+    secure_allocator(const secure_allocator<U>&) noexcept {}
+
+    ~secure_allocator() noexcept = default;
+
+    template<typename U>
+    struct rebind {
+        using other = secure_allocator<U>;
+    };
+
+    T* allocate(std::size_t n)
     {
-        T *p;
-        p = std::allocator<T>::allocate(n, hint);
-        if (p != NULL)
-            LockedPageManager::instance.LockRange(p, sizeof(T) * n);
+        if (n > max_size()) {
+            throw std::bad_alloc();
+        }
+
+        T* p = static_cast<T*>(::operator new(n * sizeof(T)));
+        if (p != nullptr) {
+            try {
+                LockedPageManager::Instance().LockRange(p, n * sizeof(T));
+            } catch (...) {
+                ::operator delete(p);
+                throw;
+            }
+        }
         return p;
     }
 
-    void deallocate(T* p, std::size_t n)
+    void deallocate(T* p, std::size_t n) noexcept
     {
-        if (p != NULL)
-        {
-            OPENSSL_cleanse(p, sizeof(T) * n);
-            LockedPageManager::instance.UnlockRange(p, sizeof(T) * n);
+        if (p != nullptr) {
+            // Clear memory securely
+            OPENSSL_cleanse(p, n * sizeof(T));
+
+            // Unlock memory pages
+            LockedPageManager::Instance().UnlockRange(p, n * sizeof(T));
+
+            ::operator delete(p);
         }
-        std::allocator<T>::deallocate(p, n);
+    }
+
+    std::size_t max_size() const noexcept
+    {
+        return std::numeric_limits<std::size_t>::max() / sizeof(T);
+    }
+
+    template<typename U, typename... Args>
+    void construct(U* p, Args&&... args)
+    {
+        ::new (static_cast<void*>(p)) U(std::forward<Args>(args)...);
+    }
+
+    template<typename U>
+    void destroy(U* p)
+    {
+        p->~U();
     }
 };
 
+template<typename T, typename U>
+bool operator==(const secure_allocator<T>&, const secure_allocator<U>&) noexcept
+{
+    return true;
+}
+
+template<typename T, typename U>
+bool operator!=(const secure_allocator<T>&, const secure_allocator<U>&) noexcept
+{
+    return false;
+}
 
 //
 // Allocator that clears its contents before deletion.
 //
 template<typename T>
-struct zero_after_free_allocator : public std::allocator<T>
+class zero_after_free_allocator
 {
-    // MSVC8 default copy constructor is broken
-    typedef std::allocator<T> base;
-    typedef typename base::size_type size_type;
-    typedef typename base::difference_type  difference_type;
-    typedef typename base::pointer pointer;
-    typedef typename base::const_pointer const_pointer;
-    typedef typename base::reference reference;
-    typedef typename base::const_reference const_reference;
-    typedef typename base::value_type value_type;
-    zero_after_free_allocator() throw() {}
-    zero_after_free_allocator(const zero_after_free_allocator& a) throw() : base(a) {}
-    template <typename U>
-    zero_after_free_allocator(const zero_after_free_allocator<U>& a) throw() : base(a) {}
-    ~zero_after_free_allocator() throw() {}
-    template<typename _Other> struct rebind
-    { typedef zero_after_free_allocator<_Other> other; };
+public:
+    using value_type = T;
+    using size_type = std::size_t;
+    using difference_type = std::ptrdiff_t;
+    using pointer = T*;
+    using const_pointer = const T*;
+    using reference = T&;
+    using const_reference = const T&;
 
-    void deallocate(T* p, std::size_t n)
+    zero_after_free_allocator() noexcept = default;
+
+    template<typename U>
+    zero_after_free_allocator(const zero_after_free_allocator<U>&) noexcept {}
+
+    ~zero_after_free_allocator() noexcept = default;
+
+    template<typename U>
+    struct rebind {
+        using other = zero_after_free_allocator<U>;
+    };
+
+    T* allocate(std::size_t n)
     {
-        if (p != NULL)
-            OPENSSL_cleanse(p, sizeof(T) * n);
-        std::allocator<T>::deallocate(p, n);
+        if (n > max_size()) {
+            throw std::bad_alloc();
+        }
+        return static_cast<T*>(::operator new(n * sizeof(T)));
+    }
+
+    void deallocate(T* p, std::size_t n) noexcept
+    {
+        if (p != nullptr) {
+            // Clear memory securely
+            OPENSSL_cleanse(p, n * sizeof(T));
+            ::operator delete(p);
+        }
+    }
+
+    std::size_t max_size() const noexcept
+    {
+        return std::numeric_limits<std::size_t>::max() / sizeof(T);
+    }
+
+    template<typename U, typename... Args>
+    void construct(U* p, Args&&... args)
+    {
+        ::new (static_cast<void*>(p)) U(std::forward<Args>(args)...);
+    }
+
+    template<typename U>
+    void destroy(U* p)
+    {
+        p->~U();
     }
 };
 
+template<typename T, typename U>
+bool operator==(const zero_after_free_allocator<T>&, const zero_after_free_allocator<U>&) noexcept
+{
+    return true;
+}
+
+template<typename T, typename U>
+bool operator!=(const zero_after_free_allocator<T>&, const zero_after_free_allocator<U>&) noexcept
+{
+    return false;
+}
+
 // This is exactly like std::string, but with a custom allocator.
-typedef std::basic_string<char, std::char_traits<char>, secure_allocator<char> > SecureString;
+typedef std::basic_string<char, std::char_traits<char>, secure_allocator<char>> SecureString;
+
+// Secure vector type
+template<typename T>
+using secure_vector = std::vector<T, secure_allocator<T>>;
+
+// Zero-after-free vector type
+template<typename T>
+using zero_after_free_vector = std::vector<T, zero_after_free_allocator<T>>;
 
 #endif

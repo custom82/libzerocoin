@@ -1,139 +1,175 @@
-/**
- * @file       Coin.h
- *
- * @brief      PublicCoin and PrivateCoin classes for the Zerocoin library.
- *
- * @author     Ian Miers, Christina Garman and Matthew Green
- * @date       June 2013
- *
- * @copyright  Copyright 2013 Ian Miers, Christina Garman and Matthew Green
- * @license    This project is released under the MIT license.
- **/
+// Copyright (c) 2012-2013 The PPCoin developers
+// Copyright (c) 2014 The BlackCoin developers
+// Copyright (c) 2017-2022 The Phore developers
+// Copyright (c) 2017-2022 The Phoq developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef COIN_H_
-#define COIN_H_
+#ifndef COIN_H
+#define COIN_H
+
 #include "bitcoin_bignum/bignum.h"
+#include "Accumulator.h"
+#include "Commitment.h"
 #include "Params.h"
+#include "serialize.h"
+
+// OpenSSL 3.5 compatibility
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 namespace libzerocoin {
 
-enum  CoinDenomination {
-    ZQ_LOVELACE = 1,
-    ZQ_GOLDWASSER = 10,
-    ZQ_RACKOFF = 25,
-    ZQ_PEDERSEN = 50,
-    ZQ_WILLIAMSON = 100 // Malcolm J. Williamson,
-                    // the scientist who actually invented
-                    // Public key cryptography
-};
-
-/** A Public coin is the part of a coin that
- * is published to the network and what is handled
- * by other clients. It contains only the value
- * of commitment to a serial number and the
- * denomination of the coin.
- */
-class PublicCoin {
-public:
-	template<typename Stream>
-	PublicCoin(const Params* p, Stream& strm): params(p) {
-		strm >> *this;
-	}
-
-	PublicCoin( const Params* p);
-
-	/**Generates a public coin
+	/** Public coin class encapsulates the data of a public coin.
 	 *
-	 * @param p cryptographic paramters
-	 * @param coin the value of the commitment.
-	 * @param denomination The denomination of the coin. Defaults to ZQ_LOVELACE
+	 * Public coins are those that are intended to be visible to the entire network
+	 * (ie: spend transactions). Private coins are those that are intended to be
+	 * invisible (ie: mint transactions).
 	 */
-	PublicCoin( const Params* p, const Bignum& coin, const CoinDenomination d = ZQ_LOVELACE);
-	const Bignum& getValue() const;
-	const CoinDenomination getDenomination() const;
-	bool operator==(const PublicCoin& rhs) const;
-	bool operator!=(const PublicCoin& rhs) const;
-	/** Checks that a coin prime
-	 *  and in the appropriate range
-	 *  given the parameters
-	 * @return true if valid
+	class PublicCoin {
+	public:
+		PublicCoin(){};
+
+		/**
+		 * @brief Construct a new Public Coin object from a denomination and randomness
+		 *
+		 * @param p zerocoin params
+		 * @param coin the value of the coin
+		 * @param randomness randomness used to mint the coin
+		 */
+		PublicCoin(const ZerocoinParams* p, const CoinDenomination coin, const CBigNum& randomness);
+
+		template<typename Stream>
+		PublicCoin(const ZerocoinParams* p, Stream& strm) : params(p) {
+			strm >> *this;
+		}
+
+		const CBigNum& getValue() const { return this->value; }
+		CoinDenomination getDenomination() const { return this->denomination; }
+		bool operator==(const PublicCoin& rhs) const {
+			return ((this->value == rhs.value) && (this->params == rhs.params));
+		}
+		bool operator!=(const PublicCoin& rhs) const {
+			return !(*this == rhs);
+		}
+
+		/** Checks that a coin prime is in the appropriate range given the parameters
+		 * and that the coin is prime.
+		 *
+		 * @return true if valid
+		 */
+		bool validate() const;
+
+		/**
+		 * @brief Adds the public coin to the accumulator checksum
+		 *
+		 * @param checksum accumulator checksum to add the coin value to
+		 */
+		void addToChecksum(CSHA256& checksum) const;
+
+		void setParams(const ZerocoinParams* p) { this->params = p; }
+
+		ADD_SERIALIZE_METHODS;
+		template <typename Stream, typename Operation>
+		inline void SerializationOp(Stream& s, Operation ser_action) {
+			READWRITE(value);
+			READWRITE(denomination);
+		}
+
+	private:
+		const ZerocoinParams* params;
+		CBigNum value;
+		CoinDenomination denomination;
+	};
+
+	/** Private coin class encapsulates the data of a private coin.
+	 *
+	 * Private coins are those that are intended to be invisible to the entire
+	 * network (ie: mint transactions). Public coins are those that are intended to be
+	 * visible (ie: spend transactions).
 	 */
-    bool validate() const;
-	IMPLEMENT_SERIALIZE
-	(
-	    READWRITE(value);
-	    READWRITE(denomination);
-	)
-private:
-	const Params* params;
-	Bignum value;
-	// Denomination is stored as an INT because storing
-	// and enum raises amigiuities in the serialize code //FIXME if possible
-	int denomination;
-};
+	class PrivateCoin {
+	public:
+		PrivateCoin(){};
 
-/**
- * A private coin. As the name implies, the content
- * of this should stay private except PublicCoin.
- *
- * Contains a coin's serial number, a commitment to it,
- * and opening randomness for the commitment.
- *
- * @warning Failure to keep this secret(or safe),
- * @warning will result in the theft of your coins
- * @warning and a TOTAL loss of anonymity.
- */
-class PrivateCoin {
-public:
-	template<typename Stream>
-	PrivateCoin(const Params* p, Stream& strm): publicCoin(p),params(p) {
-		strm >> *this;
-	}
-	PrivateCoin(const Params* p,const CoinDenomination denomination = ZQ_LOVELACE);
-	const PublicCoin& getPublicCoin() const;
-	const Bignum& getSerialNumber() const;
-	const Bignum& getRandomness() const;
+		/**
+		 * @brief Construct a new Private Coin object
+		 *
+		 * @param p zerocoin params
+		 * @param denomination the denomination of the coin
+		 * @param version the version of the coin
+		 */
+		PrivateCoin(const ZerocoinParams* p, const CoinDenomination denomination, int version = ZEROCOIN_VERSION);
 
-	IMPLEMENT_SERIALIZE
-	(
-	    READWRITE(publicCoin);
-	    READWRITE(randomness);
-	    READWRITE(serialNumber);
-	)
-private:
-	const Params* params;
-	PublicCoin publicCoin;
-	Bignum randomness;
-	Bignum serialNumber;
+		const CBigNum& getSerialNumber() const { return this->serialNumber; }
+		const CBigNum& getRandomness() const { return this->randomness; }
+		const CBigNum& getPublicCoinValue() const { return this->publicCoin.getValue(); }
+		const PublicCoin& getPublicCoin() const { return this->publicCoin; }
+		CoinDenomination getDenomination() const { return this->denomination; }
+		int getVersion() const { return this->version; }
+		void setPublicCoin(const PublicCoin& p) { this->publicCoin = p; }
 
-	/**
-	 * @brief Mint a new coin.
-	 * @param denomination the denomination of the coin to mint
-	 * @throws ZerocoinException if the process takes too long
-	 *
-	 * Generates a new Zerocoin by (a) selecting a random serial
-	 * number, (b) committing to this serial number and repeating until
-	 * the resulting commitment is prime. Stores the
-	 * resulting commitment (coin) and randomness (trapdoor).
-	 **/
-	void mintCoin(const CoinDenomination denomination);
-	
-	/**
-	 * @brief Mint a new coin using a faster process.
-	 * @param denomination the denomination of the coin to mint
-	 * @throws ZerocoinException if the process takes too long
-	 *
-	 * Generates a new Zerocoin by (a) selecting a random serial
-	 * number, (b) committing to this serial number and repeating until
-	 * the resulting commitment is prime. Stores the
-	 * resulting commitment (coin) and randomness (trapdoor).
-	 * This routine is substantially faster than the
-	 * mintCoin() routine, but could be more vulnerable
-	 * to timing attacks. Don't use it if you think someone
-	 * could be timing your coin minting.
-	 **/
-	void mintCoinFast(const CoinDenomination denomination);
+		/** Mint a new coin
+		 *
+		 * @param version the version of the coin
+		 */
+		void mintCoin(const CoinDenomination denomination, int version = ZEROCOIN_VERSION);
 
-};
+		/**
+		 * Mint a new coin using a faster process by using a pre-computed
+		 * accumulator witness. This is intended to be used by the miner.
+		 *
+		 * @param denomination the denomination of the coin
+		 * @param version the version of the coin
+		 * @param witness the accumulator witness for the coin
+		 */
+		void mintCoinFast(const CoinDenomination denomination, int version, Accumulator& witness);
+
+		/**
+		 * Mint a new coin with a specific serial number
+		 *
+		 * @param denomination the denomination of the coin
+		 * @param version the version of the coin
+		 * @param serial the serial number to use
+		 */
+		void mintCoinWithSerial(const CoinDenomination denomination, int version, const CBigNum& serial);
+
+	private:
+		const ZerocoinParams* params;
+		PublicCoin publicCoin;
+		CBigNum serialNumber;
+		CBigNum randomness;
+		CoinDenomination denomination;
+		int version = ZEROCOIN_VERSION;
+
+		/**
+		 * @brief Generate a new serial number
+		 *
+		 * @return CBigNum the new serial number
+		 */
+		void generateSerial();
+
+		/**
+		 * @brief Generate a new randomness value
+		 *
+		 * @return CBigNum the new randomness
+		 */
+		void generateRandomness();
+
+		/**
+		 * Creates a Pedersen commitment to the serial number and randomness
+		 *
+		 * @param commitment the commitment output
+		 */
+		void createCommitment(Commitment& commitment);
+	};
 
 } /* namespace libzerocoin */
-#endif /* COIN_H_ */
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
+#endif /* COIN_H */

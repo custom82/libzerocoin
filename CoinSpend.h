@@ -1,108 +1,157 @@
-/**
- * @file       CoinSpend.h
- *
- * @brief      CoinSpend class for the Zerocoin library.
- *
- * @author     Ian Miers, Christina Garman and Matthew Green
- * @date       June 2013
- *
- * @copyright  Copyright 2013 Ian Miers, Christina Garman and Matthew Green
- * @license    This project is released under the MIT license.
- **/
+// Copyright (c) 2017-2022 The Phore developers
+// Copyright (c) 2017-2022 The Phoq developers
+// Distributed under the MIT/X11 software license, see the accompanying
+// file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef COINSPEND_H_
-#define COINSPEND_H_
+#ifndef COINSPEND_H
+#define COINSPEND_H
 
-#include "Params.h"
-#include "Coin.h"
-#include "Commitment.h"
-#include "bitcoin_bignum/bignum.h"
 #include "Accumulator.h"
 #include "AccumulatorProofOfKnowledge.h"
+#include "Coin.h"
+#include "Commitment.h"
+#include "Params.h"
 #include "SerialNumberSignatureOfKnowledge.h"
 #include "SpendMetaData.h"
-#include "bitcoin_bignum/serialize.h"
+#include "bitcoin_bignum/bignum.h"
+
+// OpenSSL 3.5 compatibility
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 namespace libzerocoin {
 
-/** The complete proof needed to spend a zerocoin.
- * Composes together a proof that a coin is accumulated
- * and that it has a given serial number.
- */
-class CoinSpend {
-public:
-	template<typename Stream>
-	CoinSpend(const Params* p,  Stream& strm):denomination(ZQ_LOVELACE),
-		accumulatorPoK(&p->accumulatorParams),
-		serialNumberSoK(p),
-		commitmentPoK(&p->serialNumberSoKCommitmentGroup, &p->accumulatorParams.accumulatorPoKCommitmentGroup) {
-		strm >> *this;
-	}
-	/**Generates a proof spending a zerocoin.
-	 *
-	 * To use this, provide an unspent PrivateCoin, the latest Accumulator
-	 * (e.g from the most recent Bitcoin block) containing the public part
-	 * of the coin, a witness to that, and whatever medeta data is needed.
-	 *
-	 * Once constructed, this proof can be serialized and sent.
-	 * It is validated simply be calling validate.
-	 * @warning Validation only checks that the proof is correct
-	 * @warning for the specified values in this class. These values must be validated
-	 *  Clients ought to check that
-	 * 1) params is the right params
-	 * 2) the accumulator actually is in some block
-	 * 3) that the serial number is unspent
-	 * 4) that the transaction
-	 *
-	 * @param p cryptographic parameters
-	 * @param coin The coin to be spend
-	 * @param a The current accumulator containing the coin
-	 * @param witness The witness showing that the accumulator contains the coin
-	 * @param m arbitrary meta data related to the spend that might be needed by Bitcoin
-	 * 			(i.e. the transaction hash)
-	 * @throw ZerocoinException if the process fails
+	/** The complete proof needed to spend a zerocoin.
 	 */
-	CoinSpend(const Params* p, const PrivateCoin& coin, Accumulator& a, const AccumulatorWitness& witness, const SpendMetaData& m);
+	class CoinSpend {
+	public:
+		CoinSpend(){};
 
-	/** Returns the serial number of the coin spend by this proof.
-	 *
-	 * @return the coin's serial number
-	 */
-	const Bignum& getCoinSerialNumber();
+		/** Creates a coin spend proof of a public coin
+		 *
+		 * @param p zerocoin params
+		 * @param coin the public coin to spend
+		 * @param a the accumulator containing the coin
+		 * @param checksum the checksum of the accumulator
+		 * @param accumulatorPoK proof of knowledge of the accumulator
+		 * @param serialNumberSoK signature of knowledge of the serial number
+		 * @param newAccumulator the new accumulator after the spend
+		 * @param newChecksum the new checksum after the spend
+		 * @param commitment the commitment to the serial number and randomness
+		 * @param denomination the denomination of the coin
+		 */
+		CoinSpend(const ZerocoinParams* p, const PublicCoin& coin, Accumulator& a, const uint32_t checksum,
+				  const AccumulatorProofOfKnowledge& accumulatorPoK, const SerialNumberSignatureOfKnowledge& serialNumberSoK,
+			const AccumulatorWitness& witness, const uint32_t& newAccumulator, const CBigNum& newChecksum,
+			const Commitment& commitment, const CoinDenomination d);
 
-	/**Gets the denomination of the coin spent in this proof.
-	 *
-	 * @return the denomination
-	 */
-	const CoinDenomination getDenomination();
+		/** Creates a coin spend proof of a private coin
+		 *
+		 * @param p zerocoin params
+		 * @param coin the private coin to spend
+		 * @param a the accumulator containing the coin
+		 * @param checksum the checksum of the accumulator
+		 * @param msghash hash of the transaction
+		 * @param metadat the spend metadata
+		 */
+		CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin, Accumulator& a, const uint32_t checksum,
+				  const uint256& msghash, const SpendMetaData& metadata);
 
-	bool HasValidSerial() const;
-	bool Verify(const Accumulator& a, const SpendMetaData &metaData) const;
+		CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin, Accumulator& a, const uint32_t checksum,
+				  const SpendMetaData& m);
 
-	IMPLEMENT_SERIALIZE
-	(
-	    READWRITE(denomination);
-	    READWRITE(accCommitmentToCoinValue);
-	    READWRITE(serialCommitmentToCoinValue);
-	    READWRITE(coinSerialNumber);
-	    READWRITE(accumulatorPoK);
-	    READWRITE(serialNumberSoK);
-	    READWRITE(commitmentPoK);
-	)
+		CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin, Accumulator& a, const uint32_t checksum);
 
-private:
-	const Params *params;
-	const uint256 signatureHash(const SpendMetaData &m) const;
-	// Denomination is stored as an INT because storing
-	// and enum raises amigiuities in the serialize code //FIXME if possible
-	int denomination;
-	Bignum accCommitmentToCoinValue;
-	Bignum serialCommitmentToCoinValue;
-	Bignum coinSerialNumber;
-	AccumulatorProofOfKnowledge accumulatorPoK;
-	SerialNumberSignatureOfKnowledge serialNumberSoK;
-	CommitmentProofOfKnowledge commitmentPoK;
-};
+		virtual ~CoinSpend(){};
+
+		const CBigNum& getCoinSerialNumber() const { return this->coinSerialNumber; }
+		const uint256 getTxHash() const { return ptxHash; }
+		void setTxHash(uint256 txHash) { ptxHash = txHash; }
+
+		const CoinDenomination getDenomination() const { return this->denomination; }
+		int64_t getDenominationAsAmount() const { return ZerocoinDenominationToAmount(this->denomination); }
+
+		// Returns true if the proof is valid for the given coin, accumulator, and checksum
+		bool Verify(const Accumulator& a, const uint32_t checksum) const;
+		bool HasValidSerial(ZerocoinParams* params) const;
+		bool HasValidSignature() const;
+		CBigNum CalculateValidSerial(ZerocoinParams* params);
+
+		void setVersion(int nVersion) { this->version = nVersion; }
+		int getVersion() const { return this->version; }
+
+		const SpendMetaData getMetaData() const { return this->metadata; }
+
+		// Setters for use in testing
+		void setAccumulatorBlockHash(const uint256& hash) { this->accumulatorBlockHash = hash; }
+		void setDenomination(CoinDenomination denom) { this->denomination = denom; }
+
+		ADD_SERIALIZE_METHODS;
+		template <typename Stream, typename Operation>
+		inline void SerializationOp(Stream& s, Operation ser_action) {
+			READWRITE(version);
+			READWRITE(coinSerialNumber);
+			READWRITE(randomness);
+			READWRITE(serialCommitmentToCoinValue);
+			READWRITE(accumulatorCommitmentToCoinValue);
+			READWRITE(coinValue);
+			READWRITE(accumulatorPoK);
+			READWRITE(serialNumberSoK);
+			READWRITE(commitmentPoK);
+			READWRITE(denomination);
+			READWRITE(ptxHash);
+
+			// Only serialize accumulatorBlockHash for V3+ spends
+			if (version >= 3) {
+				READWRITE(accumulatorBlockHash);
+			}
+
+			// Only serialize accumulatorId for V4+ spends
+			if (version >= 4) {
+				READWRITE(accumulatorId);
+			}
+		}
+
+		static CoinSpend* Create(const ZerocoinParams* paramsZerocoin, const PrivateCoin& coin,
+								 Accumulator& accumulator, const uint32_t checksum,
+								 const SpendMetaData& metadata, const uint256& msghash);
+
+		static std::vector<unsigned char> ParseCoinSpend(const CDataStream& data);
+
+	protected:
+		int version;
+		uint256 ptxHash{};
+		CBigNum coinSerialNumber;
+		CBigNum randomness;
+		CBigNum serialCommitmentToCoinValue;
+		CBigNum accumulatorCommitmentToCoinValue;
+		CoinDenomination denomination;
+		uint256 accumulatorBlockHash;
+		uint32_t accumulatorId{0};
+
+		// The following fields are only used in v3+ spends
+		CBigNum coinValue;
+		AccumulatorProofOfKnowledge accumulatorPoK;
+		SerialNumberSignatureOfKnowledge serialNumberSoK;
+		CommitmentProofOfKnowledge commitmentPoK;
+
+		SpendMetaData metadata;
+
+		// Returns the serial number of the coin
+		const CBigNum calculateSerial(const ZerocoinParams* params);
+		// Returns the randomness of the coin
+		const CBigNum calculateRandomness();
+
+		// Returns the hash of the signature meta data
+		const CBigNum signatureHash() const;
+	};
 
 } /* namespace libzerocoin */
-#endif /* COINSPEND_H_ */
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
+#endif /* COINSPEND_H */

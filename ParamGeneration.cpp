@@ -1,236 +1,369 @@
-// Copyright (c) 2017 The Zerocoin Developers
-// Distributed under the MIT software license, see the accompanying
+// Copyright (c) 2017-2022 The Phore developers
+// Copyright (c) 2017-2022 The Phoq developers
+// Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "ParamGeneration.h"
-#include "Zerocoin.h"
-#include "bitcoin_bignum/bignum.h"
-#include <string>
-#include <cmath>
-#include <openssl/sha.h>
-#include <openssl/rsa.h>
+#include "hash.h"
 #include <openssl/bn.h>
+#include <openssl/sha.h>
 #include <openssl/err.h>
-#include <openssl/provider.h>  // AGGIUNTO: per OpenSSL 3.x
 #include <iostream>
+#include <sstream>
 
-using namespace std;
+// OpenSSL 3.5 compatibility
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 namespace libzerocoin {
 
-	// AGGIUNTO: Inizializzazione OpenSSL 3.x
-	#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-	static void init_openssl_3_if_needed() {
-		static bool initialized = false;
-		if (!initialized) {
-			OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CONFIG, NULL);
-			OSSL_PROVIDER_load(NULL, "legacy");
-			initialized = true;
-		}
-	}
-	#endif
-
-	CBigNum generateIntegerFromSeed(uint32_t numBits, arith_uint256& seed, uint8_t* g, uint32_t *count)
-	{
-		CBigNum result(0);
-		uint32_t iterations = (uint32_t)ceil((double)numBits / (double)HASH_OUTPUT_BITS);
-
-		BN_CTX* bn_ctx = BN_CTX_new();
-		if (!bn_ctx)
-			throw ZerocoinException("CBigNum::generateIntegerFromSeed : BN_CTX_new failed");
-
-		BN_CTX_start(bn_ctx);
-
-		try {
-			for (uint32_t i = 0; i < iterations; i++) {
-				CSHA256 hasher;
-				uint256 hash;
-
-				hasher.Write(seed.begin(), 32);
-				hasher.Write(g, 32);
-				hasher.Finalize(hash.begin());
-				seed = arith_uint256(hash);
-
-				CBigNum hashBN;
-				hashBN.setuint256(seed);
-
-				result = result << HASH_OUTPUT_BITS;
-				result = result + hashBN;
-
-				if (count)
-					(*count)++;
-			}
-
-			CBigNum mask = (CBigNum(1) << numBits) - 1;
-			result = result & mask;
-
-		} catch (...) {
-			BN_CTX_end(bn_ctx);
-			BN_CTX_free(bn_ctx);
-			throw;
-		}
-
-		BN_CTX_end(bn_ctx);
-		BN_CTX_free(bn_ctx);
-		return result;
-	}
-
-	uint256 calculateSeed(Params* params,
-						  CBigNum modulus,
-					   string auxString,
-					   uint32_t index)
-	{
+	uint256 CalculateSeed(const CBigNum& modulus, const std::string& auxString,
+						  uint32_t securityLevel, std::string groupName) {
 		CHashWriter hasher(0,0);
-		hasher << *params;
-		hasher << modulus;
-		hasher << auxString;
-		hasher << index;
 
-		uint256 hash = hasher.GetHash();
-		return hash;
-	}
+		// Convert CBigNum to vector for hashing
+		std::vector<unsigned char> modBytes = modulus.getvch();
+		hasher.write((const char*)modBytes.data(), modBytes.size());
 
-	uint256 calculateGeneratorSeed(uint256 seed, uint256 pSeed, uint256 qSeed,
-								   string label, uint32_t index)
-	{
-		CHashWriter hasher(0,0);
-		hasher << seed;
-		hasher << pSeed;
-		hasher << qSeed;
-		hasher << label;
-		hasher << index;
+		hasher.write((const char*)auxString.data(), auxString.size());
+		hasher.write((const char*)&securityLevel, sizeof(securityLevel));
+		hasher.write((const char*)groupName.data(), groupName.size());
 
-		uint256 hash = hasher.GetHash();
-		return hash;
-	}
+		return hasher.GetHash();
+						  }
 
-	CBigNum calculateGroupGenerator(uint256 seed, uint256 pSeed, uint256 qSeed,
-									CBigNum modulus, CBigNum groupOrder,
-									uint32_t index)
-	{
-		CBigNum result;
-		arith_uint256 i = 0;
-		while (result.isZero()) {
-			arith_uint256 hash = calculateGeneratorSeed(seed, pSeed, qSeed, "J", UintToArith256(i));
+						  uint256 CalculateGeneratorSeed(const uint256& seed, const CBigNum& modulus,
+														 const std::string& groupName, uint32_t index) {
+							  CHashWriter hasher(0,0);
 
-			if (i == 0)
-				throw ZerocoinException("calculateGroupGenerator: failed to find generator");
-			i = i - 1;
+							  hasher.write((const char*)&seed, sizeof(seed));
 
-			CBigNum candidate(hash);
-			candidate = candidate % modulus;
+							  // Convert CBigNum to vector for hashing
+							  std::vector<unsigned char> modBytes = modulus.getvch();
+							  hasher.write((const char*)modBytes.data(), modBytes.size());
 
-			if (candidate.isOne()) continue;
-			if (!candidate.isCoprime(modulus)) continue;
-			if (candidate.pow_mod(groupOrder, modulus) != 1) continue;
+							  hasher.write((const char*)groupName.data(), groupName.size());
+							  hasher.write((const char*)&index, sizeof(index));
 
-			result = candidate;
-		}
+							  return hasher.GetHash();
+														 }
 
-		return result;
-	}
+														 uint256 CalculateHash(const uint256& input) {
+															 CHashWriter hasher(0,0);
+															 hasher.write((const char*)&input, sizeof(input));
+															 return hasher.GetHash();
+														 }
 
-	CBigNum generateRandomPrime(uint32_t primeBits)
-	{
-		CBigNum result;
-		bool found = false;
+														 CBigNum GenerateRandomPrime(uint32_t primeBitLen, const uint256& inSeed,
+																					 uint256 *outSeed, unsigned int *prime_gen_counter) {
+															 // Validate input
+															 if (primeBitLen < 2) {
+																 throw std::runtime_error("Prime bit length must be at least 2 bits");
+															 }
 
-		// AGGIUNTO: Inizializza OpenSSL 3.x
-		#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-		init_openssl_3_if_needed();
-		#endif
+															 if (primeBitLen > 10000) {
+																 throw std::runtime_error("Prime bit length too large");
+															 }
 
-		while (!found) {
-			unsigned char* buffer = new unsigned char[primeBits/8];
+															 // Calculate first seed = SHA256(inputSeed)
+															 uint256 firstSeed = CalculateHash(inSeed);
 
-			#if OPENSSL_VERSION_NUMBER >= 0x30000000L
-			init_openssl_3_if_needed();
-			#endif
+															 // Calculate second seed = SHA256(firstSeed)
+															 uint256 secondSeed = CalculateHash(firstSeed);
 
-			if (RAND_bytes(buffer, primeBits/8) != 1) {
-				delete[] buffer;
-				throw ZerocoinException("generateRandomPrime: RAND_bytes failed");
-			}
+															 CBigNum prime;
+															 bool primeFound = false;
+															 unsigned int count = 0;
 
-			BIGNUM* bn = BN_new();
-			BN_bin2bn(buffer, primeBits/8, bn);
-			delete[] buffer;
+															 // Set up OpenSSL context
+															 CAutoBN_CTX ctx;
+															 BN_CTX_start(ctx);
 
-			BN_set_bit(bn, primeBits - 1);
+															 try {
+																 while (!primeFound) {
+																	 // Generate candidate = SHA256(secondSeed || count)
+																	 CHashWriter hasher(0,0);
+																	 hasher.write((const char*)&secondSeed, sizeof(secondSeed));
+																	 hasher.write((const char*)&count, sizeof(count));
 
-			if (!BN_is_odd(bn))
-				BN_add_word(bn, 1);
+																	 uint256 candidateHash = hasher.GetHash();
 
-			CBigNum candidate;
-			candidate.setBN(bn);
-			BN_free(bn);
+																	 // Convert hash to bignum
+																	 CBigNum candidate;
+																	 BN_bin2bn(candidateHash.begin(), 32, candidate.get());
 
-			if (candidate.isPrime()) {
-				result = candidate;
-				found = true;
-			}
-		}
+																	 // Set the most significant bit to ensure correct bit length
+																	 BN_set_bit(candidate.get(), primeBitLen - 1);
 
-		return result;
-	}
+																	 // Set the least significant bit to make it odd
+																	 BN_set_bit(candidate.get(), 0);
 
-	void calculateGroupModulusAndOrder(arith_uint256 seed, uint32_t pLen, uint32_t qLen,
-									   CBigNum *resultModulus, CBigNum *resultGroupOrder,
-									   arith_uint256 *resultPseed, arith_uint256 *resultQseed)
-	{
-		bool found = false;
-		uint32_t pTries = 0, qTries = 0;
-		CBigNum p, q, n;
+																	 // Ensure candidate is in range [2^(primeBitLen-1), 2^primeBitLen - 1]
+																	 // Clear any bits above primeBitLen
+																	 for (unsigned int i = primeBitLen; i < BN_num_bits(candidate.get()); i++) {
+																		 BN_clear_bit(candidate.get(), i);
+																	 }
 
-		while (!found) {
-			arith_uint256 pSeed = seed;
-			uint8_t* pSeedBytes = new uint8_t[32];
-			memcpy(pSeedBytes, pSeed.begin(), 32);
-			p = generateIntegerFromSeed(pLen, pSeed, pSeedBytes, &pTries);
-			delete[] pSeedBytes;
+																	 // If candidate is less than 2^(primeBitLen-1), add 2^(primeBitLen-1)
+																	 CBigNum minValue;
+																	 BN_set_bit(minValue.get(), primeBitLen - 1);
 
-			if (!p.isPrime()) {
-				continue;
-			}
+																	 if (BN_cmp(candidate.get(), minValue.get()) < 0) {
+																		 if (!BN_add(candidate.get(), candidate.get(), minValue.get())) {
+																			 throw std::runtime_error("BN_add failed");
+																		 }
+																	 }
 
-			arith_uint256 qSeed = calculateSeed(NULL, p, "prime", 0);
-			uint8_t* qSeedBytes = new uint8_t[32];
-			memcpy(qSeedBytes, qSeed.begin(), 32);
-			q = generateIntegerFromSeed(qLen, qSeed, qSeedBytes, &qTries);
-			delete[] qSeedBytes;
+																	 // Ensure it's still odd
+																	 BN_set_bit(candidate.get(), 0);
 
-			if (!q.isPrime() || q == p) {
-				continue;
-			}
+																	 // Simple trial division for small primes first
+																	 static const unsigned int smallPrimes[] = {
+																		 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+																		 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151
+																	 };
 
-			n = p * q;
+																	 bool divisible = false;
+																	 for (unsigned int p : smallPrimes) {
+																		 if (BN_mod_word(candidate.get(), p) == 0) {
+																			 divisible = true;
+																			 break;
+																		 }
+																	 }
 
-			if (n.bitSize() == pLen + qLen) {
-				*resultModulus = n;
-				*resultGroupOrder = (p - 1) * (q - 1);
-				*resultPseed = pSeed;
-				*resultQseed = qSeed;
-				found = true;
-			}
-		}
-	}
+																	 if (!divisible) {
+																		 // Use OpenSSL's Miller-Rabin primality test
+																		 BN_GENCB* cb = BN_GENCB_new();
+																		 if (!cb) {
+																			 throw std::runtime_error("BN_GENCB_new failed");
+																		 }
 
-	Params* ZerocoinParams::GetTestParams()
-	{
-		CBigNum g = CBigNum(2);
-		CBigNum h = CBigNum(3);
+																		 // Determine number of Miller-Rabin checks based on bit length
+																		 int checks = 0;
+																		 if (primeBitLen <= 256) checks = 27;
+																		 else if (primeBitLen <= 512) checks = 15;
+																		 else if (primeBitLen <= 1024) checks = 8;
+																		 else if (primeBitLen <= 2048) checks = 4;
+																		 else checks = 2;
 
-		CBigNum accumulatorModulus;
-		accumulatorModulus.SetHex("1234567890ABCDEF");
+																		 int is_prime = BN_is_prime_fasttest_ex(candidate.get(), checks, ctx, 1, cb);
+																		 BN_GENCB_free(cb);
 
-		CBigNum coinCommitmentModulus;
-		coinCommitmentModulus.SetHex("FEDCBA0987654321");
+																		 if (is_prime == 1) {
+																			 prime = candidate;
+																			 primeFound = true;
 
-		CBigNum serialNumberSoKCommitmentModulus;
-		serialNumberSoKCommitmentModulus.SetHex("AABBCCDDEEFF0011");
+																			 if (outSeed) {
+																				 *outSeed = firstSeed;
+																			 }
+																			 if (prime_gen_counter) {
+																				 *prime_gen_counter = count;
+																			 }
 
-		return new Params(accumulatorModulus, coinCommitmentModulus,
-						  serialNumberSoKCommitmentModulus, g, h);
-	}
+																			 break;
+																		 }
+																	 }
 
-} // namespace libzerocoin
+																	 count++;
+
+																	 // Safety check
+																	 if (count > 1000000) {
+																		 throw std::runtime_error("Failed to find prime after 1,000,000 iterations");
+																	 }
+																 }
+															 }
+															 catch (...) {
+																 BN_CTX_end(ctx);
+																 throw;
+															 }
+
+															 BN_CTX_end(ctx);
+															 return prime;
+																					 }
+
+																					 CBigNum GeneratePrimeFromSeed(const uint256& seed, uint32_t primeBitLen,
+																												   uint32_t *prime_gen_counter) {
+																						 return GenerateRandomPrime(primeBitLen, seed, nullptr, prime_gen_counter);
+																												   }
+
+																												   CBigNum CalculateGroupModulus(const std::string& groupName, const uint256& seed,
+																																				 uint32_t securityLevel, uint32_t *pLen, uint32_t *qLen) {
+																													   // Determine p and q lengths based on security level
+																													   uint32_t pBitLen, qBitLen;
+
+																													   switch (securityLevel) {
+																														   case 80:
+																															   pBitLen = 1024;
+																															   qBitLen = 256;
+																															   break;
+																														   case 112:
+																															   pBitLen = 2048;
+																															   qBitLen = 256;
+																															   break;
+																														   case 128:
+																															   pBitLen = 3072;
+																															   qBitLen = 320;
+																															   break;
+																														   case 192:
+																															   pBitLen = 7680;
+																															   qBitLen = 384;
+																															   break;
+																														   case 256:
+																															   pBitLen = 15360;
+																															   qBitLen = 512;
+																															   break;
+																														   default:
+																															   throw std::runtime_error("Unsupported security level: " + std::to_string(securityLevel));
+																													   }
+
+																													   if (pLen) *pLen = pBitLen;
+																													   if (qLen) *qLen = qBitLen;
+
+																													   // Generate p
+																													   CBigNum emptyModulus(0);
+																													   std::string pAuxString = "";
+																													   uint256 pSeed = CalculateSeed(emptyModulus, pAuxString, securityLevel, groupName + "_p");
+																													   CBigNum p = GenerateRandomPrime(pBitLen, pSeed);
+
+																													   // Generate q
+																													   uint256 qSeed = CalculateSeed(p, pAuxString, securityLevel, groupName + "_q");
+																													   CBigNum q = GenerateRandomPrime(qBitLen, qSeed);
+
+																													   // Calculate n = p * q
+																													   CAutoBN_CTX ctx;
+																													   CBigNum n;
+
+																													   if (!BN_mul(n.get(), p.get(), q.get(), ctx)) {
+																														   throw std::runtime_error("BN_mul failed in CalculateGroupModulus");
+																													   }
+
+																													   // Verify bit length
+																													   unsigned int actualBits = BN_num_bits(n.get());
+																													   unsigned int expectedBits = pBitLen + qBitLen;
+
+																													   if (actualBits != expectedBits) {
+																														   std::stringstream ss;
+																														   ss << "Generated modulus has wrong bit length: " << actualBits
+																														   << " (expected " << expectedBits << ")";
+																														   throw std::runtime_error(ss.str());
+																													   }
+
+																													   return n;
+																																				 }
+
+																																				 CBigNum CalculateGroupGenerator(const uint256& seed, const CBigNum& modulus,
+																																												 const CBigNum& groupOrder, const std::string& groupName,
+																	 uint32_t index) {
+																																					 // Calculate generator seed
+																																					 uint256 generatorSeed = CalculateGeneratorSeed(seed, modulus, groupName, index);
+
+																																					 CAutoBN_CTX ctx;
+																																					 BN_CTX_start(ctx);
+
+																																					 try {
+																																						 unsigned int count = 0;
+																																						 while (true) {
+																																							 // Calculate candidate = SHA256(generatorSeed || count) mod modulus
+																																							 CHashWriter hasher(0,0);
+																																							 hasher.write((const char*)&generatorSeed, sizeof(generatorSeed));
+																																							 hasher.write((const char*)&count, sizeof(count));
+
+																																							 uint256 candidateHash = hasher.GetHash();
+
+																																							 CBigNum candidate;
+																																							 BN_bin2bn(candidateHash.begin(), 32, candidate.get());
+
+																																							 // Reduce modulo modulus
+																																							 if (!BN_mod(candidate.get(), candidate.get(), modulus.get(), ctx)) {
+																																								 throw std::runtime_error("BN_mod failed");
+																																							 }
+
+																																							 // Skip zero
+																																							 if (BN_is_zero(candidate.get())) {
+																																								 count++;
+																																								 continue;
+																																							 }
+
+																																							 // Check if candidate is in the subgroup of order groupOrder
+																																							 // candidate^groupOrder mod modulus should be 1
+																																							 CBigNum result;
+																																							 if (!BN_mod_exp(result.get(), candidate.get(), groupOrder.get(), modulus.get(), ctx)) {
+																																								 throw std::runtime_error("BN_mod_exp failed");
+																																							 }
+
+																																							 if (BN_is_one(result.get())) {
+																																								 // Found a valid generator
+																																								 BN_CTX_end(ctx);
+																																								 return candidate;
+																																							 }
+
+																																							 count++;
+
+																																							 // Safety check
+																																							 if (count > 100000) {
+																																								 throw std::runtime_error("Failed to find generator after 100,000 iterations");
+																																							 }
+																																						 }
+																																					 }
+																																					 catch (...) {
+																																						 BN_CTX_end(ctx);
+																																						 throw;
+																																					 }
+																	 }
+
+																	 // Test parameters for development
+																	 ZerocoinParams* ZerocoinParams::GetTestParams() {
+																		 static ZerocoinParams* testParams = nullptr;
+
+																		 if (!testParams) {
+																			 testParams = new ZerocoinParams();
+																			 testParams->initialized = true;
+																			 testParams->securityLevel = 80;
+
+																			 // Small safe prime for testing: 2^255 - 19 (Curve25519 prime)
+																			 testParams->accumulatorParams.accumulatorModulus.SetHex(
+																				 "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed");
+
+																			 testParams->accumulatorParams.maxCoinValue =
+																			 testParams->accumulatorParams.accumulatorModulus - CBigNum(1);
+																			 testParams->accumulatorParams.minCoinValue = CBigNum(1);
+
+																			 // For testing, use small values
+																			 testParams->accumulatorParams.accumulatorBase.SetHex("2");
+																			 testParams->accumulatorParams.k_prime.SetHex("10001");
+																			 testParams->accumulatorParams.k_dprime.SetHex("10001");
+
+																			 // Coin commitment group (using small values for testing)
+																			 testParams->coinCommitmentGroup.modulus.SetHex(
+																				 "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f");
+																			 testParams->coinCommitmentGroup.groupOrder.SetHex(
+																				 "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141");
+																			 testParams->coinCommitmentGroup.g.SetHex("2");
+																			 testParams->coinCommitmentGroup.h.SetHex("3");
+
+																			 // Serial number commitment group (same as coin commitment for testing)
+																			 testParams->serialNumberSoKCommitmentGroup = testParams->coinCommitmentGroup;
+																		 }
+
+																		 return testParams;
+																	 }
+
+																	 bool ZerocoinParams::SaveToFile(const std::string& filepath) const {
+																		 // Stub implementation - in real code, this would serialize to file
+																		 std::cerr << "Warning: SaveToFile not implemented" << std::endl;
+																		 return false;
+																	 }
+
+																	 ZerocoinParams* ZerocoinParams::LoadFromFile(const std::string& filepath) {
+																		 // Stub implementation - in real code, this would load from file
+																		 std::cerr << "Warning: LoadFromFile not implemented, returning test params" << std::endl;
+																		 return GetTestParams();
+																	 }
+
+} /* namespace libzerocoin */
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
