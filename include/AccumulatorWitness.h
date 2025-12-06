@@ -1,7 +1,6 @@
 #ifndef ACCUMULATORWITNESS_H
 #define ACCUMULATORWITNESS_H
 
-#include "Bignum.h" // Include la classe Bignum che gestisce numeri grandi
 
 class CAccumulatorWitness {
 public:
