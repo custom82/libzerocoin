@@ -1,10 +1,11 @@
+# CMakeLists.txt
 cmake_minimum_required(VERSION 3.10)
-project(libzerocoin)
+project(libzerocoin VERSION 2.0.0)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# OpenSSL 3.x
+# Trova OpenSSL
 find_package(OpenSSL 3.0 REQUIRED)
 
 # Include directories
@@ -13,8 +14,8 @@ include_directories(
     ${OPENSSL_INCLUDE_DIR}
 )
 
-# Lista file sorgente (basata sul repository)
-set(LIBZEROCOIN_SOURCES
+# Lista file sorgente - verifica quali esistono
+set(POSSIBLE_SOURCES
     Accumulator.cpp
     AccumulatorProofOfKnowledge.cpp
     Coin.cpp
@@ -27,29 +28,34 @@ set(LIBZEROCOIN_SOURCES
     bitcoin_bignum/bignum.cpp
 )
 
-# Verifica quali file esistono
-foreach(file ${LIBZEROCOIN_SOURCES})
-    if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
-        message(WARNING "File ${file} non trovato, rimuovo dalla lista")
-        list(REMOVE_ITEM LIBZEROCOIN_SOURCES ${file})
+# Filtra solo i file che esistono
+set(LIBZEROCOIN_SOURCES)
+foreach(src ${POSSIBLE_SOURCES})
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${src})
+        list(APPEND LIBZEROCOIN_SOURCES ${src})
+        message(STATUS "Found source: ${src}")
+    else()
+        message(WARNING "Source file not found: ${src}")
     endif()
 endforeach()
 
-# Aggiungi libreria
-add_library(libzerocoin ${LIBZEROCOIN_SOURCES})
+# Verifica che abbiamo almeno alcuni file
+list(LENGTH LIBZEROCOIN_SOURCES NUM_SOURCES)
+if(NUM_SOURCES EQUAL 0)
+    message(FATAL_ERROR "No source files found!")
+endif()
+
+# Crea la libreria
+add_library(zerocoin ${LIBZEROCOIN_SOURCES})
 
 # Link con OpenSSL
-target_link_libraries(libzerocoin OpenSSL::Crypto OpenSSL::SSL)
+target_link_libraries(zerocoin ${OPENSSL_LIBRARIES})
 
-# Flags compilazione
+# Flags di compilazione
 if(MSVC)
-    target_compile_definitions(libzerocoin PRIVATE
-        _CRT_SECURE_NO_WARNINGS
-        _SCL_SECURE_NO_WARNINGS
-    )
-    target_compile_options(libzerocoin PRIVATE /W3)
+    target_compile_options(zerocoin PRIVATE /W3)
 else()
-    target_compile_options(libzerocoin PRIVATE
+    target_compile_options(zerocoin PRIVATE
         -Wall
         -Wextra
         -Wno-deprecated-declarations
@@ -57,8 +63,25 @@ else()
     )
 endif()
 
-# Installazione
-install(TARGETS libzerocoin DESTINATION lib)
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ DESTINATION include/libzerocoin
-    FILES_MATCHING PATTERN "*.h"
+# Installa la libreria
+install(TARGETS zerocoin
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+)
+
+# Installa gli header
+file(GLOB HEADER_FILES "*.h" "bitcoin_bignum/*.h")
+install(FILES ${HEADER_FILES}
+    DESTINATION include/libzerocoin
+)
+
+# Crea file pkg-config
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/libzerocoin.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/libzerocoin.pc
+    @ONLY
+)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libzerocoin.pc
+    DESTINATION lib/pkgconfig
 )
