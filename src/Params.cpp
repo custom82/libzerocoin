@@ -4,25 +4,27 @@
 
 namespace libzerocoin {
 
-	// Implementazione di ZerocoinParams (non Params!)
+	// ZerocoinParams
 	ZerocoinParams::ZerocoinParams(const Bignum& N, uint32_t securityLevel)
 	: accumulatorModulus(N), securityLevel(securityLevel) {
-		// Inizializza i gruppi (stub)
-	}
-
-	// Implementazione di AccumulatorAndProofParams
-	AccumulatorAndProofParams::AccumulatorAndProofParams() {
 		// Inizializza (stub)
 	}
 
-	// Implementazione di IntegerGroupParams
-	IntegerGroupParams::IntegerGroupParams() {
+	// AccumulatorAndProofParams
+	AccumulatorAndProofParams::AccumulatorAndProofParams()
+	: initialized(false) {
+		// Inizializza (stub)
+	}
+
+	// IntegerGroupParams
+	IntegerGroupParams::IntegerGroupParams()
+	: initialized(false) {
 		// Inizializza (stub)
 	}
 
 	Bignum IntegerGroupParams::randomElement() const {
-		return Bignum::randBignum(modulus);
+		// Stub - usa un numero casuale
+		return Bignum::randBignum(Bignum(1000));
 	}
 
 } // namespace libzerocoin
-EOF

@@ -1,74 +1,43 @@
-// Copyright (c) 2017-2022 The Phore developers
-// Copyright (c) 2017-2022 The Phoq developers
-// Distributed under the MIT/X11 software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
 #ifndef SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H
 #define SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H
 
-#include "bignum.h"
-#include "Params.h"
-
-// OpenSSL 3.5 compatibility
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
+#include "zerocoin_defs.h"
+#include "serialize_stub.h"
 
 namespace libzerocoin {
 
-	// Forward declaration
-	class Commitment;
-
-	/** A Signature of Knowledge on the hash of a commitment to a coin's serial number.
-	 */
 	class SerialNumberSignatureOfKnowledge {
-	public:
-		SerialNumberSignatureOfKnowledge(){};
-		SerialNumberSignatureOfKnowledge(const ZerocoinParams* p);
-
-		/** Creates a Signature of Knowledge object for a given coin commitment.
-		 *
-		 * @param p zerocoin params
-		 * @param coin the coin commitment
-		 * @param msghash hash of the transaction
-		 */
-		SerialNumberSignatureOfKnowledge(const ZerocoinParams* p, const Commitment& coin, const uint256 msghash);
-
-		virtual ~SerialNumberSignatureOfKnowledge(){};
-
-		/** Verifies the Signature of Knowledge.
-		 *
-		 * @return true if valid
-		 */
-		bool Verify(const CBigNum& coinCommitment, const uint256 msghash) const;
-
-		
-		template <typename Stream, typename Operation>
-		inline void SerializationOp(Stream& s, Operation ser_action) {
-			//READWRITE(s_notprime);
-			//READWRITE(sprime);
-			//READWRITE(hash);
-		}
-
 	private:
-		const ZerocoinParams* params;
-		CBigNum s_notprime;
-		CBigNum sprime;
-		CBigNum hash;
+		Bignum s_notprime;
+		Bignum sprime;
+		uint256 hash;
 
-		/** Proves knowledge of a coin's serial number in the commitment.
-		 *
-		 * @param commitment the commitment to the coin's serial number
-		 * @param msghash hash of the transaction
-		 */
-		void Prove(const Commitment& commitment, const uint256 msghash);
+	public:
+		SerialNumberSignatureOfKnowledge();
+		SerialNumberSignatureOfKnowledge(const IntegerGroupParams* p);
+
+		bool Verify(const Bignum& coinSerialNumber,
+					const Bignum& valueOfCommitmentToCoin,
+					const Bignum& serialNumberSokCommitment,
+					const uint256& msghash) const;
+
+					// Simple serialization without complex macros
+					template<typename Stream>
+					void Serialize(Stream& s) const {
+						// Stub implementation
+					}
+
+					template<typename Stream>
+					void Unserialize(Stream& s) {
+						// Stub implementation
+					}
+
+					// Getters
+					const Bignum& getS_notprime() const { return s_notprime; }
+					const Bignum& getSprime() const { return sprime; }
+					const uint256& getHash() const { return hash; }
 	};
 
-} /* namespace libzerocoin */
+} // namespace libzerocoin
 
-#ifdef __clang__
-#pragma clang diagnostic pop
 #endif
-
-#endif /* SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H */

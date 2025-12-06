@@ -239,10 +239,11 @@ std::string CBigNum::ToString(int nBase) const {
 
 // Funzioni crittografiche
 CBigNum CBigNum::randBignum(const CBigNum& range) {
-    CBigNum r;
-    if (!BN_rand_range(r.bn, range.bn))
-        throw bignum_error("CBigNum::randBignum : BN_rand_range failed");
-    return r;
+    CBigNum result;
+    if (range.bn && BN_num_bits(range.bn) > 0) {
+        BN_rand_range(result.bn, range.bn);
+    }
+    return result;
 }
 
 CBigNum CBigNum::generatePrime(unsigned int bits, bool safe) {

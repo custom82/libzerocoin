@@ -6,13 +6,11 @@
 #include <string>
 #include <vector>
 
-// Forward declarations in global namespace
-class CAccumulatorWitness;
-
 namespace libzerocoin {
 
     // Forward declarations
     class IntegerGroupParams;
+    class AccumulatorAndProofParams;
     class ZerocoinParams;
     class Accumulator;
     class AccumulatorWitness;
@@ -25,7 +23,7 @@ namespace libzerocoin {
     class SerialNumberSignatureOfKnowledge;
     class SpendMetaData;
 
-    // Usa using invece di typedef per evitare conflitti
+    // Usa using invece di typedef
     using Params = ZerocoinParams;
 
     // Tipi di base
@@ -51,12 +49,10 @@ namespace libzerocoin {
         Bignum h;
         Bignum modulus;
         Bignum groupOrder;
+        bool initialized;
 
         IntegerGroupParams();
         Bignum randomElement() const;
-        Bignum getG() const { return g; }
-        Bignum getH() const { return h; }
-        Bignum getModulus() const { return modulus; }
     };
 
     // Parametri accumulatore
@@ -64,6 +60,7 @@ namespace libzerocoin {
     public:
         IntegerGroupParams accumulatorQRN;
         IntegerGroupParams accumulatorBase;
+        bool initialized;
 
         AccumulatorAndProofParams();
     };
@@ -78,13 +75,6 @@ namespace libzerocoin {
         int securityLevel;
 
         ZerocoinParams(const Bignum& N, uint32_t securityLevel);
-
-        // Getters
-        const IntegerGroupParams& getCoinCommitmentGroup() const { return coinCommitmentGroup; }
-        const IntegerGroupParams& getSerialNumberSoKCommitmentGroup() const { return serialNumberSoKCommitmentGroup; }
-        const AccumulatorAndProofParams& getAccumulatorParams() const { return accumulatorParams; }
-        const Bignum& getAccumulatorModulus() const { return accumulatorModulus; }
-        int getSecurityLevel() const { return securityLevel; }
     };
 
 } // namespace libzerocoin

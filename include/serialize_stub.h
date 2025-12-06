@@ -4,7 +4,12 @@
 #include <vector>
 #include <cstddef>
 
-// Stub per serializzazione
+// Simple serialization stub
+template<typename T>
+inline void READWRITE(T& obj) {
+    // Stub implementation
+}
+
 class CDataStream {
 private:
     std::vector<unsigned char> data;
@@ -17,7 +22,10 @@ public:
         SER_DISK = 4
     };
 
-    CDataStream(int nTypeIn, int nVersionIn) : pos(0) {}
+    CDataStream(int nTypeIn, int nVersionIn) : pos(0) {
+        (void)nTypeIn;
+        (void)nVersionIn;
+    }
 
     template<typename T>
     CDataStream& operator<<(const T& obj) {
@@ -35,15 +43,15 @@ public:
     void clear() { data.clear(); pos = 0; }
 };
 
-// Macro per serializzazione
+// Simple serialization macros
 #define ADD_SERIALIZE_METHODS \
 template<typename Stream> \
 void Serialize(Stream& s) const { \
-    const_cast<std::remove_const<decltype(*this)>::type*>(this)->SerializationOp(s, CSerActionSerialize()); \
+    /* Stub implementation */ \
 } \
 template<typename Stream> \
 void Unserialize(Stream& s) { \
-    SerializationOp(s, CSerActionUnserialize()); \
+    /* Stub implementation */ \
 }
 
 class CSerActionSerialize {};

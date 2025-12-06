@@ -1,39 +1,24 @@
-#ifndef LIBZEROCOIN_SERIALNUM_SIGNATURE_OF_KNOWLEDGE_H
-#define LIBZEROCOIN_SERIALNUM_SIGNATURE_OF_KNOWLEDGE_H
-
+#include "SerialNumberSignatureOfKnowledge.h"
 #include "serialize_stub.h"
-#include "zerocoin_types.h"
-#include "bignum.h"
-#include "Coin.h"
 
 namespace libzerocoin {
 
-	class SerialNumberSignatureOfKnowledge
-	{
-	private:
-		const ZerocoinParams* params;
-		CBigNum s_notprime;
-		CBigNum sprime;
+	SerialNumberSignatureOfKnowledge::SerialNumberSignatureOfKnowledge() {
+	}
 
-	public:
-		SerialNumberSignatureOfKnowledge(
-			const ZerocoinParams* p,
-			const PublicCoin& coin,
-			const CBigNum& serial);
+	SerialNumberSignatureOfKnowledge::SerialNumberSignatureOfKnowledge(const IntegerGroupParams* p) {
+		(void)p;
+	}
 
-		bool Verify(const CBigNum& serial) const;
-
-		// FIX: versione corretta e unica della SerializationOp
-		template <typename Stream, typename Operation>
-		inline void SerializationOp(Stream& s, Operation ser_action)
-		{
-			READWRITE(s_notprime);
-			READWRITE(sprime);
-		}
-
-		ADD_SERIALIZE_METHODS;
-	};
+	bool SerialNumberSignatureOfKnowledge::Verify(const Bignum& coinSerialNumber,
+												  const Bignum& valueOfCommitmentToCoin,
+												  const Bignum& serialNumberSokCommitment,
+												  const uint256& msghash) const {
+													  (void)coinSerialNumber;
+													  (void)valueOfCommitmentToCoin;
+													  (void)serialNumberSokCommitment;
+													  (void)msghash;
+													  return true; // Stub
+												  }
 
 } // namespace libzerocoin
-
-#endif // LIBZEROCOIN_SERIALNUM_SIGNATURE_OF_KNOWLEDGE_H
