@@ -7,24 +7,9 @@
 
 namespace libzerocoin {
 
-	// Forward declarations complete
-	class AccumulatorProofOfKnowledge {
-	public:
-		template<typename Stream>
-		void Serialize(Stream& s) const {}
-
-		template<typename Stream>
-		void Unserialize(Stream& s) {}
-	};
-
-	class SerialNumberSignatureOfKnowledge {
-	public:
-		template<typename Stream>
-		void Serialize(Stream& s) const {}
-
-		template<typename Stream>
-		void Unserialize(Stream& s) {}
-	};
+	// Forward declarations
+	class AccumulatorProofOfKnowledge;
+	class SerialNumberSignatureOfKnowledge;
 
 	class Accumulator {
 	public:
@@ -45,14 +30,15 @@ namespace libzerocoin {
 	class CoinSpend {
 	private:
 		const ZerocoinParams* params;
-		const PrivateCoin* coin;
-		Accumulator* accumulator;
+		Bignum coinSerial;
+		Bignum accumulatorCommitment;
 		uint32_t checksum;
 		std::unique_ptr<AccumulatorProofOfKnowledge> accumulatorProofOfKnowledge;
 		std::unique_ptr<SerialNumberSignatureOfKnowledge> serialNumberSignatureOfKnowledge;
 
 	public:
-		CoinSpend(const ZerocoinParams* p, const PrivateCoin* coin, Accumulator* a, uint32_t checksum);
+		// Usa riferimenti invece di puntatori (come nel .cpp originale)
+		CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin, Accumulator& a, uint32_t checksum);
 
 		template<typename Stream>
 		void Serialize(Stream& s) const {}
