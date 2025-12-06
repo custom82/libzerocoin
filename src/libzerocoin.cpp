@@ -4,6 +4,7 @@
 #include <sstream>
 #include <algorithm>
 #include <stdexcept>
+#include <vector>
 
 namespace libzerocoin {
 
@@ -89,7 +90,7 @@ namespace libzerocoin {
         return result;
     }
 
-    CBigNum CBigNum::random(size_t bits, Generator& gen) {
+    CBigNum CBigNum::random(size_t bits, Generator gen) {
         CBigNum result;
         const size_t bytes = (bits + 7) / 8;
         std::vector<uint8_t> data(bytes);
@@ -209,7 +210,16 @@ namespace libzerocoin {
 
     void Accumulator::accumulate(const CBigNum& coinValue) {
         BN_CTX* ctx = BN_CTX_new();
-        BN_mod_mul(value_.bn, value_.bn, coinValue.bn, params_->N.bn, ctx);
+        if (!ctx) throw std::bad_alloc();
+
+        // Use accessor methods for private members
+        BN_mod_mul(
+            value_.get(),
+                   value_.get(),
+                   coinValue.get(),
+                   params_->N.get(),
+                   ctx
+        );
         BN_CTX_free(ctx);
         coinCount_++;
     }
@@ -217,7 +227,16 @@ namespace libzerocoin {
     void Accumulator::remove(const CBigNum& coinValue) {
         CBigNum inv = coinValue.modInverse(params_->N);
         BN_CTX* ctx = BN_CTX_new();
-        BN_mod_mul(value_.bn, value_.bn, inv.bn, params_->N.bn, ctx);
+        if (!ctx) throw std::bad_alloc();
+
+        // Use accessor methods for private members
+        BN_mod_mul(
+            value_.get(),
+                   value_.get(),
+                   inv.get(),
+                   params_->N.get(),
+                   ctx
+        );
         BN_CTX_free(ctx);
         coinCount_--;
     }
@@ -235,26 +254,26 @@ namespace libzerocoin {
                          Version version)
     : params_(std::move(params)),
     coinSerialNumber_(coin.serialNumber_),
-    accumulatorValue_(accumulator.getValue()),  // Ordine corretto
+    accumulatorValue_(accumulator.getValue()),  // Correct order
     ptxHash_(ptxHash),
     accumulatorId_(accumulatorId),
     version_(version) {}
 
     bool CoinSpend::verify(const Accumulator& accumulator) const {
-        // CORREZIONE: usa accumulatorValue_
+        // Use accumulatorValue_ (not accumulatedValues_)
         if (accumulatorValue_.toHex() != accumulator.getValue().toHex()) {
             return false;
         }
-        // ... altre verifiche
+        // ... other validations
         return true;
     }
 
     void CoinSpend::generateAccumulatorProof(const Accumulator& accumulator, const CBigNum& witness) {
-        // Implementazione placeholder
+        // Placeholder implementation
     }
 
     void CoinSpend::generateSerialNumberProof(const PrivateCoin& coin) {
-        // Implementazione placeholder
+        // Placeholder implementation
     }
 
 } // namespace libzerocoin

@@ -12,9 +12,6 @@
 
 namespace libzerocoin {
 
-    class CBigNum;
-    using BigNum = CBigNum;
-
     class CBigNum {
     private:
         BIGNUM* bn;
@@ -23,6 +20,10 @@ namespace libzerocoin {
         explicit CBigNum(const std::string& hex);
         CBigNum(const CBigNum& other);
         ~CBigNum();
+
+        // Access methods for OpenSSL operations
+        BIGNUM* get() const { return bn; }
+        BIGNUM** get_ptr() { return &bn; }
 
         CBigNum& operator=(const CBigNum& other);
         CBigNum operator+(const CBigNum& other) const;
@@ -38,7 +39,8 @@ namespace libzerocoin {
             static constexpr result_type max() { return UINT64_MAX; }
         };
 
-        static CBigNum random(size_t bits, Generator& gen = std::mt19937_64{std::random_device{}()});
+        // Fixed: Accept generator by value instead of reference
+        static CBigNum random(size_t bits, Generator gen = std::mt19937_64{std::random_device{}()});
     };
 
     class uint256 {
@@ -125,7 +127,7 @@ namespace libzerocoin {
         void generateAccumulatorProof(const Accumulator& accumulator, const CBigNum& witness);
         void generateSerialNumberProof(const PrivateCoin& coin);
 
-        // ORDINE CORRETTO (dichiarazione e inizializzazione)
+        // Correct order (matches initialization)
         std::shared_ptr<ZerocoinParams> params_;
         CBigNum coinSerialNumber_;
         CBigNum accumulatorValue_;
