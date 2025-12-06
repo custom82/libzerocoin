@@ -20,6 +20,7 @@ set(ZEROCOIN_SOURCES
     src/Commitment.cpp
     src/ParamGeneration.cpp
     src/hash.cpp
+    src/CoinSpend.cpp
 )
 
 add_library(zerocoin ${ZEROCOIN_SOURCES})

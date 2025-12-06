@@ -2,21 +2,17 @@
 
 namespace libzerocoin {
 
-	CoinSpend::CoinSpend(const ZerocoinParams* p, const PrivateCoin* coin,
-						 Accumulator* accumulator, uint32_t checksum)
-	: params(p), coin(coin), accumulator(accumulator), checksum(checksum),
-	accumulatorProofOfKnowledge(std::make_unique<AccumulatorProofOfKnowledge>()),
-	serialNumberSignatureOfKnowledge(std::make_unique<SerialNumberSignatureOfKnowledge>()) {
+	CoinSpend::CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin,
+						 Accumulator& a, const uint32_t checksum)
+	: params(p), coinSerial(coin.getSerialNumber()),
+	accumulatorCommitment(a.getValue()), checksum(checksum) {
 	}
 
 	bool CoinSpend::Verify(const Accumulator& accumulator, const SpendMetaData& metaData) const {
-		return true;  // Stub
+		// Stub implementation
+		(void)accumulator;
+		(void)metaData;
+		return true;
 	}
 
-	CoinSpend* CoinSpend::Create(const ZerocoinParams* params, const PrivateCoin& coin,
-								 Accumulator& accumulator, uint32_t checksum) {
-		return new CoinSpend(params, &coin, &accumulator, checksum);
-								 }
-
 } // namespace libzerocoin
-EOF
