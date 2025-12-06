@@ -1,68 +1,75 @@
-cmake_minimum_required(VERSION 3.10)
+# Dopo cmake_minimum_required e project, aggiungi:
 
-# Nome del progetto e versioni
-project(libzerocoin VERSION 1.0 LANGUAGES CXX)
+# Versione della libreria
+set(ZEROCOIN_VERSION_MAJOR 0)
+set(ZEROCOIN_VERSION_MINOR 1)
+set(ZEROCOIN_VERSION_PATCH 0)
 
-# Impostazioni di compilazione
-set(CMAKE_CXX_STANDARD 17)
+# Opzioni di build
+option(BUILD_SHARED_LIBS "Build shared library" ON)
+option(BUILD_TESTS "Build tests" OFF)
+
+# Configura C++11
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Definisci la variabile di compilazione per la libreria
-set(LIBZEROCOIN_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
-set(LIBZEROCOIN_SRC_DIR ${CMAKE_SOURCE_DIR}/src)
+# Find OpenSSL
+find_package(OpenSSL REQUIRED)
 
-# Aggiungi le cartelle di inclusione
+# Include directories
 include_directories(
-    ${LIBZEROCOIN_INCLUDE_DIR}
-    ${LIBZEROCOIN_SRC_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/bitcoin_bignum
 )
 
-# Aggiungi i file di origine
-set(SRC_FILES
-    ${LIBZEROCOIN_SRC_DIR}/Accumulator.cpp
-    ${LIBZEROCOIN_SRC_DIR}/AccumulatorProofOfKnowledge.cpp
-    ${LIBZEROCOIN_SRC_DIR}/Coin.cpp
-    ${LIBZEROCOIN_SRC_DIR}/CoinSpend.cpp
-    ${LIBZEROCOIN_SRC_DIR}/Commitment.cpp
-    ${LIBZEROCOIN_SRC_DIR}/ParamGeneration.cpp
-    ${LIBZEROCOIN_SRC_DIR}/SerialNumberSignatureOfKnowledge.cpp
-    ${LIBZEROCOIN_SRC_DIR}/bignum.cpp
-    ${LIBZEROCOIN_SRC_DIR}/hash.cpp
-    ${LIBZEROCOIN_SRC_DIR}/paramgen.cpp
-    ${LIBZEROCOIN_SRC_DIR}/Tests.cpp
-    ${LIBZEROCOIN_SRC_DIR}/Tutorial.cpp
+# Source files
+set(ZEROCOIN_SOURCES
+    src/Accumulator.cpp
+    src/AccumulatorProofOfKnowledge.cpp
+    src/Coin.cpp
+    src/CoinSpend.cpp
+    src/Commitment.cpp
+    # src/CommitmentProofOfKnowledge.cpp  # COMMENTATO - file non esiste
+    src/ParamGeneration.cpp
+    src/Params.cpp
+    src/SerialNumberSignatureOfKnowledge.cpp
+    src/Zerocoin.cpp
+    bitcoin_bignum/bignum.cpp
 )
 
-# Aggiungi i file di header
-set(HEADER_FILES
-    ${LIBZEROCOIN_INCLUDE_DIR}/Accumulator.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/AccumulatorProofOfKnowledge.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/Coin.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/CoinSpend.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/Commitment.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/CommitmentProofOfKnowledge.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/ParamGeneration.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/SerialNumberSignatureOfKnowledge.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/bignum.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/hash.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/serialize.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/serialize_stub.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/uint256.h
-    ${LIBZEROCOIN_INCLUDE_DIR}/Zerocoin.h
+# Headers for installation
+set(ZEROCOIN_HEADERS
+    include/libzerocoin/Accumulator.h
+    include/libzerocoin/AccumulatorProofOfKnowledge.h
+    include/libzerocoin/Coin.h
+    include/libzerocoin/CoinSpend.h
+    include/libzerocoin/Commitment.h
+    include/libzerocoin/CommitmentProofOfKnowledge.h
+    include/libzerocoin/ParamGeneration.h
+    include/libzerocoin/Params.h
+    include/libzerocoin/SerialNumberSignatureOfKnowledge.h
+    include/libzerocoin/Zerocoin.h
+    bitcoin_bignum/bignum.h
+    bitcoin_bignum/serialize.h
+    bitcoin_bignum/util.h
 )
 
-# Definisci la libreria da creare
-add_library(zerocoin STATIC ${SRC_FILES} ${HEADER_FILES})
+# Aggiungi se uint256.h esiste
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/libzerocoin/uint256.h")
+    list(APPEND ZEROCOIN_HEADERS include/libzerocoin/uint256.h)
+endif()
 
-# Opzioni di linkaggio (se necessarie)
-# Esempio: link a OpenSSL o altre librerie
-# target_link_libraries(zerocoin PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+# Crea la libreria
+add_library(zerocoin ${ZEROCOIN_SOURCES})
+target_link_libraries(zerocoin OpenSSL::Crypto)
 
-# Genera un file .pc per pkg-config
-configure_file(${CMAKE_SOURCE_DIR}/libzerocoin.pc.in ${CMAKE_BINARY_DIR}/libzerocoin.pc @ONLY)
+# Installa la libreria
+install(TARGETS zerocoin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
 
-# Crea una configurazione per i test (se presenti)
-# aggiungere opzioni per i test in caso siano necessari
-# enable_testing()
-# add_subdirectory(tests)
+# Installa gli headers
+install(FILES ${ZEROCOIN_HEADERS}
+    DESTINATION include/libzerocoin
+)
