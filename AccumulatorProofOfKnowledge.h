@@ -1,35 +1,12 @@
-#ifndef ACCUMULATORPROOF_H
-#define ACCUMULATORPROOF_H
+#ifndef ACCUMULATOR_PROOF_OF_KNOWLEDGE_H
+#define ACCUMULATOR_PROOF_OF_KNOWLEDGE_H
 
-#include "AccumulatorWitness.h"
-#include "Stream.h"
-#include "Accumulator.h"
+#include "AccumulatorWitness.h" // Aggiunto include per AccumulatorWitness
 
-namespace libzerocoin {
+class AccumulatorProofOfKnowledge {
+public:
+	void Serialize(Stream& s) const;
+	void Unserialize(Stream& s);
+};
 
-	class AccumulatorProofOfKnowledge {
-	public:
-		AccumulatorProofOfKnowledge(const AccumulatorAndProofParams* params, const Commitment& coin, const uint256 msghash, Accumulator& accumulator);
-		void Serialize(Stream& s) const;
-		void Unserialize(Stream& s);
-
-	private:
-		Bignum C_e;
-		Bignum C_u;
-		Bignum C_r;
-		Bignum st_1;
-		Bignum st_2;
-		Bignum st_3;
-		Bignum t_1;
-		Bignum t_2;
-		Bignum t_3;
-		Bignum t_4;
-		Bignum s_alpha;
-		Bignum s_beta;
-		Bignum s_zeta;
-		Bignum s_sigma;
-		Bignum s_eta;
-	};
-}
-
-#endif // ACCUMULATORPROOF_H
+#endif // ACCUMULATOR_PROOF_OF_KNOWLEDGE_H

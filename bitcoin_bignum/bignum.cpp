@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cctype>
 #include <algorithm>
+#include "bignum_error.h"
 
 extern "C" {
     int HexDigit(char c) {
