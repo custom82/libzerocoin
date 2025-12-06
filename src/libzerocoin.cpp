@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <vector>
+#include <random>
 
 namespace libzerocoin {
 
@@ -95,9 +96,11 @@ namespace libzerocoin {
         const size_t bytes = (bits + 7) / 8;
         std::vector<uint8_t> data(bytes);
 
-        std::generate(data.begin(), data.end(), [&gen]() {
-            return static_cast<uint8_t>(gen() & 0xFF);
-        });
+        // Generate random bytes using the provided generator
+        std::uniform_int_distribution<uint8_t> dist(0, 255);
+        for (auto& byte : data) {
+            byte = dist(gen);
+        }
 
         if (!BN_bin2bn(data.data(), data.size(), result.bn)) {
             throw std::runtime_error("BN_bin2bn failed");

@@ -32,15 +32,11 @@ namespace libzerocoin {
         [[nodiscard]] CBigNum modInverse(const CBigNum& mod) const;
         [[nodiscard]] std::string toHex() const;
 
-        struct Generator {
-            using result_type = uint64_t;
-            result_type operator()();
-            static constexpr result_type min() { return 0; }
-            static constexpr result_type max() { return UINT64_MAX; }
-        };
+        // Use standard generator type
+        using Generator = std::mt19937_64;
 
-        // Fixed: Accept generator by value instead of reference
-        static CBigNum random(size_t bits, Generator gen = std::mt19937_64{std::random_device{}()});
+        // Fixed: Accept generator by value
+        static CBigNum random(size_t bits, Generator gen = Generator{std::random_device{}()});
     };
 
     class uint256 {
