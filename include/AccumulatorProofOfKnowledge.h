@@ -1,45 +1,34 @@
-#ifndef ACCUMULATORPROOFOFKNOWLEDGE_H
-#define ACCUMULATORPROOFOFKNOWLEDGE_H
+#ifndef ACCUMULATORPROOFOFKNOWLEDGE_H_
+#define ACCUMULATORPROOFOFKNOWLEDGE_H_
 
 #include "bignum.h"
-#include <string>
-
-// Template generico per Stream
-template<typename Stream>
-void Serialize(Stream& s) {}
-
-template<typename Stream>
-void Unserialize(Stream& s) {}
+#include "serialize.h"
+#include <vector>
 
 namespace libzerocoin {
 
 	class AccumulatorProofOfKnowledge {
-	private:
-		CBigNum C;
-		CBigNum S;
-
 	public:
-		AccumulatorProofOfKnowledge() {}
-
-		AccumulatorProofOfKnowledge(const CBigNum& commitment, const CBigNum& response)
-		: C(commitment), S(response) {}
-
-		bool Verify(const CBigNum& accumulator, const CBigNum& value) const {
-			return true;  // Stub
-		}
+		AccumulatorProofOfKnowledge() = default;
 
 		template<typename Stream>
-		void Serialize(Stream& s) const {
-			// Stub
+		AccumulatorProofOfKnowledge(Stream& strm, const CBigNum& commitment, unsigned int version) {
+			Unserialize(strm, commitment, version);
 		}
 
-		template<typename Stream>
-		void Unserialize(Stream& s) {
-			// Stub
+		void Serialize(Stream& strm) const {
+			// Serialize proof data
 		}
 
-		const CBigNum& getCommitment() const { return C; }
-		const CBigNum& getResponse() const { return S; }
+		void Unserialize(Stream& strm, const CBigNum& commitment, unsigned int version) {
+			// Unserialize proof data
+		}
+
+		ADD_SERIALIZE_METHODS
+		template <typename Stream, typename Operation>
+		inline void SerializationOp(Stream& s, Operation ser_action) {
+			// Serialization implementation
+		}
 	};
 
 } // namespace libzerocoin

@@ -1,41 +1,33 @@
-#ifndef SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H
-#define SERIALNUMBER_SIGNATURE_OF_KNOWLEDGE_H
+#ifndef SERIALNUMBERSIGNATUREOFKNOWLEDGE_H_
+#define SERIALNUMBERSIGNATUREOFKNOWLEDGE_H_
 
-#include "zerocoin_defs.h"
-#include "serialize_stub.h"
+#include "bignum.h"
+#include "serialize.h"
 
 namespace libzerocoin {
 
 	class SerialNumberSignatureOfKnowledge {
-	private:
-		Bignum s_notprime;
-		Bignum sprime;
-		uint256 hash;
-
 	public:
-		SerialNumberSignatureOfKnowledge();
-		SerialNumberSignatureOfKnowledge(const IntegerGroupParams* p);
+		SerialNumberSignatureOfKnowledge() = default;
 
-		bool Verify(const Bignum& coinSerialNumber,
-					const Bignum& valueOfCommitmentToCoin,
-					const Bignum& serialNumberSokCommitment,
-					const uint256& msghash) const;
+		template<typename Stream>
+		SerialNumberSignatureOfKnowledge(Stream& strm, const CBigNum& serial, unsigned int version) {
+			Unserialize(strm, serial, version);
+		}
 
-					// Simple serialization without complex macros
-					template<typename Stream>
-					void Serialize(Stream& s) const {
-						// Stub implementation
-					}
+		void Serialize(Stream& strm) const {
+			// Serialize signature data
+		}
 
-					template<typename Stream>
-					void Unserialize(Stream& s) {
-						// Stub implementation
-					}
+		void Unserialize(Stream& strm, const CBigNum& serial, unsigned int version) {
+			// Unserialize signature data
+		}
 
-					// Getters
-					const Bignum& getS_notprime() const { return s_notprime; }
-					const Bignum& getSprime() const { return sprime; }
-					const uint256& getHash() const { return hash; }
+		ADD_SERIALIZE_METHODS
+		template <typename Stream, typename Operation>
+		inline void SerializationOp(Stream& s, Operation ser_action) {
+			// Serialization implementation
+		}
 	};
 
 } // namespace libzerocoin
