@@ -96,7 +96,6 @@ namespace libzerocoin {
         const size_t bytes = (bits + 7) / 8;
         std::vector<uint8_t> data(bytes);
 
-        // Generate random bytes using the provided generator
         std::uniform_int_distribution<uint8_t> dist(0, 255);
         for (auto& byte : data) {
             byte = dist(gen);
@@ -151,21 +150,74 @@ namespace libzerocoin {
         return ss.str();
     }
 
+    // ===================== uint512 Implementation =====================
+    uint512::uint512(std::span<const uint8_t> bytes) {
+        if (bytes.size() != 64) {
+            throw std::invalid_argument("uint512 requires exactly 64 bytes");
+        }
+        std::copy(bytes.begin(), bytes.end(), data);
+    }
+
+    uint512::uint512(const std::string& hexStr) {
+        if (hexStr.size() != 128) {
+            throw std::invalid_argument("Invalid hex string length for uint512");
+        }
+
+        for (size_t i = 0; i < 64; ++i) {
+            std::string byteStr = hexStr.substr(i * 2, 2);
+            char* end = nullptr;
+            unsigned long value = std::strtoul(byteStr.c_str(), &end, 16);
+
+            if (end != byteStr.c_str() + 2 || value > 0xFF) {
+                throw std::invalid_argument("Invalid hex digit in uint512 string");
+            }
+            data[i] = static_cast<uint8_t>(value);
+        }
+    }
+
+    uint512 uint512::hash(std::string_view str) {
+        uint512 result;
+        SHA512_CTX ctx;
+        SHA512_Init(&ctx);
+        SHA512_Update(&ctx, str.data(), str.size());
+        SHA512_Final(result.data, &ctx);
+        return result;
+    }
+
+    std::string uint512::toHex() const {
+        std::ostringstream ss;
+        ss << std::hex << std::setfill('0');
+        for (uint8_t b : data) {
+            ss << std::setw(2) << static_cast<unsigned>(b);
+        }
+        return ss.str();
+    }
+
     // ===================== ZerocoinParams Implementation =====================
-    ZerocoinParams::ZerocoinParams(CBigNum N, CBigNum g, CBigNum h,
+    ZerocoinParams::ZerocoinParams(CBigNum N, CBigNum g, CBigNum h, CBigNum H,
                                    uint32_t securityLevel, uint32_t accumulatorSize)
-    : N(std::move(N)), g(std::move(g)), h(std::move(h)),
+    : N(std::move(N)), g(std::move(g)), h(std::move(h)), H(std::move(H)),
     securityLevel(securityLevel), accumulatorSize(accumulatorSize) {}
 
     std::unique_ptr<ZerocoinParams> ZerocoinParams::generate(uint32_t securityLevel, size_t rsaBits) {
+        // Step 1: Generate RSA modulus
         CBigNum N = CBigNum::random(rsaBits);
-        CBigNum g = CBigNum::random(256);
-        CBigNum h = CBigNum::random(256);
+
+        // Step 2: Generate generators using SHA-512
+        const auto g_str = "Generator g for Zerocoin, security: " + std::to_string(securityLevel);
+        const auto h_str = "Generator h for Zerocoin, security: " + std::to_string(securityLevel);
+        const auto H_str = "Generator H (SHA-512) for Zerocoin, security: " + std::to_string(securityLevel);
+
+        // Derive generators from hashes
+        CBigNum g = uint512::hash(g_str).to512BigNum() % N;
+        CBigNum h = uint512::hash(h_str).to512BigNum() % N;
+        CBigNum H = uint512::hash(H_str).to512BigNum() % N;
 
         return std::make_unique<ZerocoinParams>(
             std::move(N),
                                                 std::move(g),
                                                 std::move(h),
+                                                std::move(H),
                                                 securityLevel,
                                                 0  // accumulatorSize placeholder
         );
@@ -174,7 +226,8 @@ namespace libzerocoin {
     bool ZerocoinParams::validate() const {
         return !N.toHex().empty() &&
         !g.toHex().empty() &&
-        !h.toHex().empty();
+        !h.toHex().empty() &&
+        !H.toHex().empty();
     }
 
     // ===================== PublicCoin Implementation =====================
@@ -200,9 +253,10 @@ namespace libzerocoin {
     serialNumber_(CBigNum::random(256)) {}
 
     void PrivateCoin::mint() {
+        // Use SHA-512 based generator H for commitment
         publicCoin_ = PublicCoin(
             params_,
-            params_->g.modExp(serialNumber_, params_->N),
+            params_->H.modExp(serialNumber_, params_->N),
                                  publicCoin_.denomination_
         );
     }
@@ -268,15 +322,14 @@ namespace libzerocoin {
     }
 
     void CoinSpend::generateAccumulatorProof(const Accumulator& accumulator, const CBigNum& witness) {
-        // Silence unused parameter warnings
         (void)accumulator;
         (void)witness;
-        // TODO: Implement actual proof generation
+        // TODO: Implement using SHA-512
     }
 
     void CoinSpend::generateSerialNumberProof(const PrivateCoin& coin) {
-        (void)coin; // Silence unused parameter warning
-        // TODO: Implement actual proof generation
+        (void)coin;
+        // TODO: Implement using SHA-512
     }
 
 } // namespace libzerocoin

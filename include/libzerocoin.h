@@ -21,7 +21,7 @@ namespace libzerocoin {
         CBigNum(const CBigNum& other);
         ~CBigNum();
 
-        // Access methods for OpenSSL operations
+        // Access methods
         BIGNUM* get() const { return bn; }
         BIGNUM** get_ptr() { return &bn; }
 
@@ -32,10 +32,7 @@ namespace libzerocoin {
         [[nodiscard]] CBigNum modInverse(const CBigNum& mod) const;
         [[nodiscard]] std::string toHex() const;
 
-        // Use standard generator type
         using Generator = std::mt19937_64;
-
-        // Fixed: Accept generator by value
         static CBigNum random(size_t bits, Generator gen = Generator{std::random_device{}()});
     };
 
@@ -48,6 +45,18 @@ namespace libzerocoin {
         explicit uint256(const std::string& hexStr);
 
         static uint256 hash(std::string_view str);
+        [[nodiscard]] std::string toHex() const;
+    };
+
+    class uint512 {
+    private:
+        uint8_t data[64];  // 512 bits
+    public:
+        constexpr uint512() : data{0} {}
+        explicit uint512(std::span<const uint8_t> bytes);
+        explicit uint512(const std::string& hexStr);
+
+        static uint512 hash(std::string_view str);
         [[nodiscard]] std::string toHex() const;
     };
 
@@ -65,13 +74,14 @@ namespace libzerocoin {
 
     class ZerocoinParams {
     public:
-        ZerocoinParams(CBigNum N, CBigNum g, CBigNum h, uint32_t securityLevel, uint32_t accumulatorSize);
+        ZerocoinParams(CBigNum N, CBigNum g, CBigNum h, CBigNum H, uint32_t securityLevel, uint32_t accumulatorSize);
         static std::unique_ptr<ZerocoinParams> generate(uint32_t securityLevel, size_t rsaBits = 2048);
         [[nodiscard]] bool validate() const;
 
         CBigNum N;
         CBigNum g;
         CBigNum h;
+        CBigNum H;  // New generator derived from SHA-512
         uint32_t securityLevel;
         uint32_t accumulatorSize;
     };
@@ -123,7 +133,6 @@ namespace libzerocoin {
         void generateAccumulatorProof(const Accumulator& accumulator, const CBigNum& witness);
         void generateSerialNumberProof(const PrivateCoin& coin);
 
-        // Correct order (matches initialization)
         std::shared_ptr<ZerocoinParams> params_;
         CBigNum coinSerialNumber_;
         CBigNum accumulatorValue_;
