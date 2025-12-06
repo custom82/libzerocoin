@@ -1,7 +1,7 @@
 #ifndef ACCUMULATOR_H
 #define ACCUMULATOR_H
 
-#include "Bignum.h"            // Aggiunto include per Bignum
+#include "bignum.h"            // Aggiunto include per Bignum
 #include "AccumulatorWitness.h" // Aggiunto include per AccumulatorWitness
 
 // Definizioni delle classi
