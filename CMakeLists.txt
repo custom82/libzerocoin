@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 project(libzerocoin)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find OpenSSL 3.x
+# OpenSSL 3.x
 find_package(OpenSSL 3.0 REQUIRED)
 
 # Include directories
@@ -13,9 +13,8 @@ include_directories(
     ${OPENSSL_INCLUDE_DIR}
 )
 
-# Source files for libzerocoin
+# Lista file sorgente (basata sul repository)
 set(LIBZEROCOIN_SOURCES
-    bitcoin_bignum/bignum.cpp
     Accumulator.cpp
     AccumulatorProofOfKnowledge.cpp
     Coin.cpp
@@ -23,21 +22,26 @@ set(LIBZEROCOIN_SOURCES
     Commitment.cpp
     CommitmentProofOfKnowledge.cpp
     ParamGeneration.cpp
-    Params.cpp
     SerialNumberSignatureOfKnowledge.cpp
     Zerocoin.cpp
+    bitcoin_bignum/bignum.cpp
 )
 
-# Add library
+# Verifica quali file esistono
+foreach(file ${LIBZEROCOIN_SOURCES})
+    if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${file})
+        message(WARNING "File ${file} non trovato, rimuovo dalla lista")
+        list(REMOVE_ITEM LIBZEROCOIN_SOURCES ${file})
+    endif()
+endforeach()
+
+# Aggiungi libreria
 add_library(libzerocoin ${LIBZEROCOIN_SOURCES})
 
-# Link with OpenSSL
-target_link_libraries(libzerocoin
-    OpenSSL::Crypto
-    OpenSSL::SSL
-)
+# Link con OpenSSL
+target_link_libraries(libzerocoin OpenSSL::Crypto OpenSSL::SSL)
 
-# Compiler flags
+# Flags compilazione
 if(MSVC)
     target_compile_definitions(libzerocoin PRIVATE
         _CRT_SECURE_NO_WARNINGS
@@ -53,6 +57,8 @@ else()
     )
 endif()
 
-# Install
+# Installazione
 install(TARGETS libzerocoin DESTINATION lib)
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} DESTINATION include/libzerocoin FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/ DESTINATION include/libzerocoin
+    FILES_MATCHING PATTERN "*.h"
+)
