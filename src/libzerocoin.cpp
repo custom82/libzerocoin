@@ -1,5 +1,5 @@
 // libzerocoin.cpp - IMPLEMENTAZIONE COMPLETA C++20
-#include "libzerocoin.h"
+#include "libzerocoin.hpp"
 #include <format>
 #include <ranges>
 #include <algorithm>
