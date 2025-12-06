@@ -1,6 +1,7 @@
 #ifndef ACCUMULATORWITNESS_H
 #define ACCUMULATORWITNESS_H
 
+#include <bignum.h>
 
 class CAccumulatorWitness {
 public:
