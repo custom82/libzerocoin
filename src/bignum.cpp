@@ -3,10 +3,11 @@
 #include <openssl/bn.h>
 #include <openssl/rand.h>
 #include <stdexcept>
+#include <sstream>
 
 namespace libzerocoin {
 
-    // Static initialization for context
+    // Initialize static context
     BN_CTX* CBigNum::ctx = BN_CTX_new();
 
     CBigNum::CBigNum() {
@@ -24,6 +25,17 @@ namespace libzerocoin {
         }
     }
 
+    CBigNum::CBigNum(long long n) {
+        bignum = BN_new();
+        if (!bignum) {
+            throw std::runtime_error("CBigNum::CBigNum(long long): BN_new failed");
+        }
+        BN_set_word(bignum, std::abs(n));
+        if (n < 0) {
+            BN_set_negative(bignum, 1);
+        }
+    }
+
     CBigNum::~CBigNum() {
         if (bignum) {
             BN_clear_free(bignum);
@@ -31,8 +43,10 @@ namespace libzerocoin {
     }
 
     CBigNum& CBigNum::operator=(const CBigNum& b) {
-        if (!BN_copy(bignum, b.bignum)) {
-            throw std::runtime_error("CBigNum::operator=: BN_copy failed");
+        if (this != &b) {
+            if (!BN_copy(bignum, b.bignum)) {
+                throw std::runtime_error("CBigNum::operator=: BN_copy failed");
+            }
         }
         return *this;
     }
@@ -54,81 +68,47 @@ namespace libzerocoin {
     }
 
     CBigNum CBigNum::operator*(const CBigNum& b) const {
-        CAutoBN_CTX pctx;
         CBigNum ret;
-        if (!BN_mul(ret.bignum, bignum, b.bignum, pctx)) {
+        if (!BN_mul(ret.bignum, bignum, b.bignum, ctx)) {
             throw std::runtime_error("CBigNum::operator*: BN_mul failed");
         }
         return ret;
     }
 
     CBigNum CBigNum::operator/(const CBigNum& b) const {
-        CAutoBN_CTX pctx;
         CBigNum ret;
-        if (!BN_div(ret.bignum, nullptr, bignum, b.bignum, pctx)) {
+        CBigNum rem;
+        if (!BN_div(ret.bignum, rem.bignum, bignum, b.bignum, ctx)) {
             throw std::runtime_error("CBigNum::operator/: BN_div failed");
         }
         return ret;
     }
 
     CBigNum CBigNum::operator%(const CBigNum& b) const {
-        CAutoBN_CTX pctx;
         CBigNum ret;
-        if (!BN_mod(ret.bignum, bignum, b.bignum, pctx)) {
+        if (!BN_mod(ret.bignum, bignum, b.bignum, ctx)) {
             throw std::runtime_error("CBigNum::operator%: BN_mod failed");
         }
         return ret;
     }
 
-    // Genera un numero primo usando OpenSSL 3.5 EVP API
+    // Static methods
     CBigNum CBigNum::generatePrime(const unsigned int numBits, bool safe) {
         CBigNum prime;
 
-        // Usa EVP_PKEY per generazione RSA (che genera numeri primi)
-        EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
-        if (!ctx) {
-            throw std::runtime_error("CBigNum::generatePrime: EVP_PKEY_CTX_new_id failed");
+        if (safe) {
+            if (!BN_generate_prime_ex2(prime.bignum, numBits, 1, nullptr, nullptr, nullptr, ctx)) {
+                throw std::runtime_error("CBigNum::generatePrime: BN_generate_prime_ex failed");
+            }
+        } else {
+            if (!BN_generate_prime_ex2(prime.bignum, numBits, 0, nullptr, nullptr, nullptr, ctx)) {
+                throw std::runtime_error("CBigNum::generatePrime: BN_generate_prime_ex failed");
+            }
         }
-
-        if (EVP_PKEY_keygen_init(ctx) <= 0) {
-            EVP_PKEY_CTX_free(ctx);
-            throw std::runtime_error("CBigNum::generatePrime: EVP_PKEY_keygen_init failed");
-        }
-
-        if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, numBits) <= 0) {
-            EVP_PKEY_CTX_free(ctx);
-            throw std::runtime_error("CBigNum::generatePrime: EVP_PKEY_CTX_set_rsa_keygen_bits failed");
-        }
-
-        EVP_PKEY *pkey = nullptr;
-        if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
-            EVP_PKEY_CTX_free(ctx);
-            throw std::runtime_error("CBigNum::generatePrime: EVP_PKEY_keygen failed");
-        }
-
-        // Estrai il modulo N (che contiene il numero primo per RSA)
-        BIGNUM *n = nullptr;
-        if (EVP_PKEY_get_bn_param(pkey, OSSL_PKEY_PARAM_RSA_N, &n) <= 0) {
-            EVP_PKEY_free(pkey);
-            EVP_PKEY_CTX_free(ctx);
-            throw std::runtime_error("CBigNum::generatePrime: EVP_PKEY_get_bn_param failed");
-        }
-
-        if (!BN_copy(prime.bignum, n)) {
-            BN_free(n);
-            EVP_PKEY_free(pkey);
-            EVP_PKEY_CTX_free(ctx);
-            throw std::runtime_error("CBigNum::generatePrime: BN_copy failed");
-        }
-
-        BN_free(n);
-        EVP_PKEY_free(pkey);
-        EVP_PKEY_CTX_free(ctx);
 
         return prime;
     }
 
-    // Random number generation using OpenSSL 3.5
     CBigNum CBigNum::randBignum(const CBigNum& range) {
         CBigNum ret;
 
@@ -155,7 +135,7 @@ namespace libzerocoin {
         unsigned char hash[EVP_MAX_MD_SIZE];
         unsigned int hashLen = 0;
 
-        EVP_MD_CTX *ctx = EVP_MD_CTX_new();
+        EVP_MD_CTX* ctx = EVP_MD_CTX_new();
         if (!ctx) {
             throw std::runtime_error("CBigNum::sha256: EVP_MD_CTX_new failed");
         }
@@ -188,13 +168,25 @@ namespace libzerocoin {
 
     // Get as vector
     std::vector<unsigned char> CBigNum::getvch() const {
-        std::vector<unsigned char> vch(BN_num_bytes(bignum));
+        int size = BN_num_bytes(bignum);
+        std::vector<unsigned char> vch(size);
 
         if (!BN_bn2bin(bignum, vch.data())) {
             throw std::runtime_error("CBigNum::getvch: BN_bn2bin failed");
         }
 
         return vch;
+    }
+
+    // To string
+    std::string CBigNum::ToString(int nBase) const {
+        char* str = BN_bn2dec(bignum);
+        if (!str) {
+            throw std::runtime_error("CBigNum::ToString: BN_bn2dec failed");
+        }
+        std::string result(str);
+        OPENSSL_free(str);
+        return result;
     }
 
     // Comparison operators

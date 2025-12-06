@@ -6,65 +6,66 @@
 #include <string>
 #include <cstdint>
 
-class CBigNum {
-private:
-    BIGNUM* bn;
+namespace libzerocoin {
 
-public:
-    // Costruttori (solo quelli essenziali per ora)
-    CBigNum();
-    CBigNum(const CBigNum& b);
-    CBigNum(int n);
-    CBigNum(unsigned int n);
-    CBigNum(long n);
-    CBigNum(unsigned long n);
-    CBigNum(long long n);
-    CBigNum(unsigned long long n);
-    CBigNum(const std::vector<unsigned char>& vch);
-    ~CBigNum();
+    class CBigNum {
+    private:
+        BIGNUM* bignum;
 
-    // Operatori di assegnazione
-    CBigNum& operator=(const CBigNum& b);
+    public:
+        // Constructors
+        CBigNum();
+        CBigNum(const CBigNum& b);
+        explicit CBigNum(long long n);
+        ~CBigNum();
 
-    // Operatori aritmetici (solo quelli essenziali)
-    CBigNum operator+(const CBigNum& b) const;
-    CBigNum operator-(const CBigNum& b) const;
-    CBigNum operator*(const CBigNum& b) const;
-    CBigNum operator/(const CBigNum& b) const;
-    CBigNum operator%(const CBigNum& b) const;
+        // Assignment
+        CBigNum& operator=(const CBigNum& b);
 
-    // Operatori composti (solo quelli essenziali)
-    CBigNum& operator+=(const CBigNum& b);
-    CBigNum& operator-=(const CBigNum& b);
+        // Arithmetic operators
+        CBigNum operator+(const CBigNum& b) const;
+        CBigNum operator-(const CBigNum& b) const;
+        CBigNum operator*(const CBigNum& b) const;
+        CBigNum operator/(const CBigNum& b) const;
+        CBigNum operator%(const CBigNum& b) const;
 
-    // Operatori di confronto
-    bool operator==(const CBigNum& b) const;
-    bool operator!=(const CBigNum& b) const;
-    bool operator<(const CBigNum& b) const;
-    bool operator<=(const CBigNum& b) const;
-    bool operator>(const CBigNum& b) const;
-    bool operator>=(const CBigNum& b) const;
+        // Comparison operators (as friend functions)
+        friend bool operator==(const CBigNum& a, const CBigNum& b);
+        friend bool operator!=(const CBigNum& a, const CBigNum& b);
+        friend bool operator<=(const CBigNum& a, const CBigNum& b);
+        friend bool operator>=(const CBigNum& a, const CBigNum& b);
+        friend bool operator<(const CBigNum& a, const CBigNum& b);
+        friend bool operator>(const CBigNum& a, const CBigNum& b);
 
-    // Metodi di conversione (solo quelli essenziali)
-    void setuint64(uint64_t n);
-    void setint64(int64_t n);
-    void setvch(const std::vector<unsigned char>& vch);
-    std::vector<unsigned char> getvch() const;  // SOLO UNA VOLTA!
-    void SetHex(const std::string& str);
-    std::string GetHex() const;
-    std::string ToString(int nBase=10) const;
+        // Static methods
+        static CBigNum generatePrime(const unsigned int numBits, bool safe = false);
+        static CBigNum randBignum(const CBigNum& range);
+        static CBigNum randKBitBignum(const uint32_t k);
 
-    // Funzioni crittografiche (solo quelle essenziali)
-    static CBigNum randBignum(const CBigNum& range);
+        // Methods
+        CBigNum sha256() const;
+        void setvch(const std::vector<unsigned char>& vch);
+        std::vector<unsigned char> getvch() const;
 
-    // Accesso alla struttura OpenSSL
-    const BIGNUM* get_bn() const { return bn; }
-    BIGNUM* mutable_bn() { return bn; }
+        // Utility
+        std::string ToString(int nBase = 10) const;
 
-    // Utility
-    bool IsZero() const { return BN_is_zero(bn); }
-    bool IsOne() const { return BN_is_one(bn); }
-    int bitSize() const { return BN_num_bits(bn); }
-};
+        // Access to internal BIGNUM
+        const BIGNUM* getBN() const { return bignum; }
+        BIGNUM* getBN() { return bignum; }
 
-#endif
+        // Static context (optional, for performance)
+        static BN_CTX* ctx;
+    };
+
+    // Comparison operators
+    bool operator==(const CBigNum& a, const CBigNum& b);
+    bool operator!=(const CBigNum& a, const CBigNum& b);
+    bool operator<=(const CBigNum& a, const CBigNum& b);
+    bool operator>=(const CBigNum& a, const CBigNum& b);
+    bool operator<(const CBigNum& a, const CBigNum& b);
+    bool operator>(const CBigNum& a, const CBigNum& b);
+
+} // namespace libzerocoin
+
+#endif // BIGNUM_H

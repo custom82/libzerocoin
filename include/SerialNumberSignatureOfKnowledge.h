@@ -1,35 +1,33 @@
-#ifndef SERIALNUMBERSIGNATUREOFKNOWLEDGE_H_
-#define SERIALNUMBERSIGNATUREOFKNOWLEDGE_H_
+#ifndef SERIALNUMBERSIGNATUREOFKNOWLEDGE_H
+#define SERIALNUMBERSIGNATUREOFKNOWLEDGE_H
 
 #include "bignum.h"
-#include "serialize.h"
+#include <cstdint>
 
 namespace libzerocoin {
 
 	class SerialNumberSignatureOfKnowledge {
 	public:
 		SerialNumberSignatureOfKnowledge() = default;
+		~SerialNumberSignatureOfKnowledge() = default;
 
 		template<typename Stream>
 		SerialNumberSignatureOfKnowledge(Stream& strm, const CBigNum& serial, unsigned int version) {
 			Unserialize(strm, serial, version);
 		}
 
-		void Serialize(Stream& strm) const {
-			// Serialize signature data
+		// Serialization stubs
+		template<typename Stream>
+		void Serialize(Stream& s) const {
+			// Implement serialization
 		}
 
-		void Unserialize(Stream& strm, const CBigNum& serial, unsigned int version) {
-			// Unserialize signature data
-		}
-
-		ADD_SERIALIZE_METHODS
-		template <typename Stream, typename Operation>
-		inline void SerializationOp(Stream& s, Operation ser_action) {
-			// Serialization implementation
+		template<typename Stream>
+		void Unserialize(Stream& s, const CBigNum& serial, unsigned int version) {
+			// Implement unserialization
 		}
 	};
 
 } // namespace libzerocoin
 
-#endif
+#endif // SERIALNUMBERSIGNATUREOFKNOWLEDGE_H

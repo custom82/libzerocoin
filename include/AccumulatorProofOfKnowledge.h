@@ -1,36 +1,33 @@
-#ifndef ACCUMULATORPROOFOFKNOWLEDGE_H_
-#define ACCUMULATORPROOFOFKNOWLEDGE_H_
+#ifndef ACCUMULATORPROOFOFKNOWLEDGE_H
+#define ACCUMULATORPROOFOFKNOWLEDGE_H
 
 #include "bignum.h"
-#include "serialize.h"
-#include <vector>
+#include <cstdint>
 
 namespace libzerocoin {
 
 	class AccumulatorProofOfKnowledge {
 	public:
 		AccumulatorProofOfKnowledge() = default;
+		~AccumulatorProofOfKnowledge() = default;
 
 		template<typename Stream>
 		AccumulatorProofOfKnowledge(Stream& strm, const CBigNum& commitment, unsigned int version) {
 			Unserialize(strm, commitment, version);
 		}
 
-		void Serialize(Stream& strm) const {
-			// Serialize proof data
+		// Serialization stubs
+		template<typename Stream>
+		void Serialize(Stream& s) const {
+			// Implement serialization
 		}
 
-		void Unserialize(Stream& strm, const CBigNum& commitment, unsigned int version) {
-			// Unserialize proof data
-		}
-
-		ADD_SERIALIZE_METHODS
-		template <typename Stream, typename Operation>
-		inline void SerializationOp(Stream& s, Operation ser_action) {
-			// Serialization implementation
+		template<typename Stream>
+		void Unserialize(Stream& s, const CBigNum& commitment, unsigned int version) {
+			// Implement unserialization
 		}
 	};
 
 } // namespace libzerocoin
 
-#endif
+#endif // ACCUMULATORPROOFOFKNOWLEDGE_H
