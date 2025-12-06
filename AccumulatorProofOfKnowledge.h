@@ -1,10 +1,12 @@
 #ifndef LIBZEROCOIN_ACCUMULATORPROOF_H
 #define LIBZEROCOIN_ACCUMULATORPROOF_H
 
-#include "bignum.h"  // Assicurati di includere CBigNum
+#include "bignum.h"  // Aggiungi CBigNum
 #include "Commitment.h"
 #include "Accumulator.h"
 #include "Coin.h"
+#include "AccumulatorWitness.h"  // Aggiungi questo include
+#include "stream.h"  // Aggiungi questo include per Stream
 
 namespace libzerocoin
 {
@@ -41,23 +43,3 @@ namespace libzerocoin
 
 		IMPLEMENT_SERIALIZE(
 			READWRITE(C_e);
-			READWRITE(C_u);
-			READWRITE(C_r);
-			READWRITE(st_1);
-			READWRITE(st_2);
-			READWRITE(st_3);
-			READWRITE(t_1);
-			READWRITE(t_2);
-			READWRITE(t_3);
-			READWRITE(t_4);
-			READWRITE(s_alpha);
-			READWRITE(s_beta);
-			READWRITE(s_zeta);
-			READWRITE(s_sigma);
-			READWRITE(s_eta);
-		)
-	};
-
-} // namespace libzerocoin
-
-#endif // LIBZEROCOIN_ACCUMULATORPROOF_H
