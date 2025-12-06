@@ -7,6 +7,7 @@ namespace libzerocoin {
 	}
 
 	void Accumulator::Add(const Bignum& value) {
+		// Stub: in realtà sarebbe una moltiplicazione modulare
 		this->value = this->value + value;
 	}
 
