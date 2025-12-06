@@ -1,51 +1,37 @@
-#ifndef LIBZEROCOIN_COMMITMENT_H
-#define LIBZEROCOIN_COMMITMENT_H
+#ifndef COMMITMENT_H
+#define COMMITMENT_H
 
-#include "src/serialize_stub.h"
-#include "src/zerocoin_types.h"
-
-#include "bitcoin_bignum/bignum.h"
-#include "Params.h"
+#include "Bignum.h"
+#include "Stream.h"
+#include "CommitmentProofOfKnowledge.h"
+#include "Accumulator.h"
+#include "Zerocoin.h"
 
 namespace libzerocoin {
 
-	class Commitment
-	{
-	private:
-		const IntegerGroupParams* params;
-		CBigNum commitmentValue;
-		CBigNum randomness;
-		const CBigNum contents;
-
+	class Commitment {
 	public:
 		Commitment(const IntegerGroupParams* p, const CBigNum& value);
+		void Serialize(Stream& s) const;
+		void Unserialize(Stream& s);
 
-		const CBigNum& getCommitmentValue() const { return commitmentValue; }
-		const CBigNum& getRandomness() const { return randomness; }
-		const CBigNum& getContents() const { return contents; }
-
-		ADD_SERIALIZE_METHODS;
-	};
-
-	class CommitmentProofOfKnowledge
-	{
 	private:
-		const IntegerGroupParams* ap;
-		const IntegerGroupParams* bp;
-
-		CBigNum S1, S2, S3, challenge;
-
-	public:
-		CommitmentProofOfKnowledge(const IntegerGroupParams* aParams,
-								   const IntegerGroupParams* bParams,
-							 const Commitment& a,
-							 const Commitment& b);
-
-		bool Verify(const CBigNum& A, const CBigNum& B) const;
-
-		ADD_SERIALIZE_METHODS;
+		const IntegerGroupParams* params;
+		CBigNum value;
 	};
 
-} // namespace libzerocoin
+	class CommitmentProofOfKnowledge {
+	public:
+		CommitmentProofOfKnowledge(const IntegerGroupParams* params, const Commitment& commitment);
+		void Serialize(Stream& s) const;
+		void Unserialize(Stream& s);
 
-#endif
+	private:
+		Commitment commitment;
+		Bignum C_e;
+		Bignum C_u;
+		Bignum C_r;
+	};
+}
+
+#endif // COMMITMENT_H

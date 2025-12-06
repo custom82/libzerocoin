@@ -1,27 +1,24 @@
-#ifndef LIBZEROCOIN_ACCUMULATOR_H
-#define LIBZEROCOIN_ACCUMULATOR_H
+#ifndef ACCUMULATOR_H
+#define ACCUMULATOR_H
 
-#include <vector>
-#include "bignum.h"  // Include per CBigNum
-#include "Coin.h"
-#include "Params.h"
+#include "Bignum.h"
+#include "Stream.h"
+#include "AccumulatorWitness.h"
 
-namespace libzerocoin
-{
+namespace libzerocoin {
 
-	class Accumulator
-	{
-	private:
-		CBigNum value;  // Modificato per usare CBigNum
-		// Altri membri...
-
+	class Accumulator {
 	public:
-		Accumulator(const AccumulatorAndProofParams* p, int denomination);
-		// Altri metodi...
+		Accumulator(const IntegerGroupParams* p, const Bignum& value);
+		void Add(const Bignum& value);
+		void Serialize(Stream& s) const;
+		void Unserialize(Stream& s);
 
-		CBigNum getValue() const { return value; } // Funzione per ottenere il valore
+	private:
+		Bignum accumulatorValue;
+		const IntegerGroupParams* params;
 	};
 
-} // namespace libzerocoin
+}
 
-#endif // LIBZEROCOIN_ACCUMULATOR_H
+#endif // ACCUMULATOR_H

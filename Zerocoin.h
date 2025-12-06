@@ -1,16 +1,28 @@
-#pragma once
-#ifndef LIBZEROCOIN_H
-#define LIBZEROCOIN_H
+#ifndef ZEROCOIN_H
+#define ZEROCOIN_H
 
-#include "src/serialize_stub.h"
-#include "src/zerocoin_types.h"
-
-#include "Params.h"
 #include "Accumulator.h"
-#include "AccumulatorProofOfKnowledge.h"
-#include "Commitment.h"
-#include "CommitmentProofOfKnowledge.h"
-#include "Coin.h"
-#include "SerialNumberSignatureOfKnowledge.h"
+#include "CBigNum.h"
 
-#endif
+namespace libzerocoin {
+
+	class ZerocoinParams {
+	public:
+		const IntegerGroupParams* groupParams;
+		const Bignum& accumulatorModulus;
+	};
+
+	class PrivateCoin {
+	public:
+		PrivateCoin(const ZerocoinParams* p, const CBigNum& coinValue);
+		void Serialize(Stream& s) const;
+		void Unserialize(Stream& s);
+
+	private:
+		const ZerocoinParams* params;
+		CBigNum value;
+	};
+
+}
+
+#endif // ZEROCOIN_H

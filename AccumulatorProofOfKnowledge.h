@@ -1,45 +1,35 @@
-#ifndef LIBZEROCOIN_ACCUMULATORPROOF_H
-#define LIBZEROCOIN_ACCUMULATORPROOF_H
+#ifndef ACCUMULATORPROOF_H
+#define ACCUMULATORPROOF_H
 
-#include "bignum.h"  // Aggiungi CBigNum
-#include "Commitment.h"
+#include "AccumulatorWitness.h"
+#include "Stream.h"
 #include "Accumulator.h"
-#include "Coin.h"
-#include "AccumulatorWitness.h"  // Aggiungi questo include
-#include "stream.h"  // Aggiungi questo include per Stream
 
-namespace libzerocoin
-{
+namespace libzerocoin {
 
-	class AccumulatorProofOfKnowledge
-	{
-	private:
-		CBigNum C_e;
-		CBigNum C_u;
-		CBigNum C_r;
-		CBigNum st_1;
-		CBigNum st_2;
-		CBigNum st_3;
-		CBigNum t_1;
-		CBigNum t_2;
-		CBigNum t_3;
-		CBigNum t_4;
-		CBigNum s_alpha;
-		CBigNum s_beta;
-		CBigNum s_zeta;
-		CBigNum s_sigma;
-		CBigNum s_eta;
-
+	class AccumulatorProofOfKnowledge {
 	public:
-		AccumulatorProofOfKnowledge(const AccumulatorAndProofParams* params,
-									const Commitment& commitment,
-							  const AccumulatorWitness& witness,
-							  Accumulator& accumulator);
-
-		bool Verify(const Accumulator& accumulator, const CBigNum& valueOfCommitmentToCoin) const;
-
+		AccumulatorProofOfKnowledge(const AccumulatorAndProofParams* params, const Commitment& coin, const uint256 msghash, Accumulator& accumulator);
 		void Serialize(Stream& s) const;
 		void Unserialize(Stream& s);
 
-		IMPLEMENT_SERIALIZE(
-			READWRITE(C_e);
+	private:
+		Bignum C_e;
+		Bignum C_u;
+		Bignum C_r;
+		Bignum st_1;
+		Bignum st_2;
+		Bignum st_3;
+		Bignum t_1;
+		Bignum t_2;
+		Bignum t_3;
+		Bignum t_4;
+		Bignum s_alpha;
+		Bignum s_beta;
+		Bignum s_zeta;
+		Bignum s_sigma;
+		Bignum s_eta;
+	};
+}
+
+#endif // ACCUMULATORPROOF_H

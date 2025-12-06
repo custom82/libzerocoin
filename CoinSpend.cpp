@@ -1,19 +1,28 @@
 #include "CoinSpend.h"
-#include "Accumulator.h"
 
-namespace libzerocoin
-{
+namespace libzerocoin {
 
-	CoinSpend::CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin, const CBigNum& value)
-	{
-		// Definisci il costruttore, usato da CoinSpend
+	CoinSpend::CoinSpend(const ZerocoinParams* p, const PrivateCoin& coin, Accumulator& accumulator, uint32_t checksum)
+	: params(p), coin(coin), accumulator(accumulator), checksum(checksum) {
+		// Initialize the accumulator proof of knowledge
+		accumulatorProofOfKnowledge = AccumulatorProofOfKnowledge(params, coin, checksum, accumulator);
 	}
 
-	const uint256 CoinSpend::signatureHash(const SpendMetaData& m) const
-	{
-		CHashWriter h(0, 0);
-		h << m << serialCommitmentToCoinValue << accCommitmentToCoinValue;  // Corretto con operator<<
-		return h.GetHash();
+	void CoinSpend::Serialize(Stream& s) const {
+		s << coin << accumulator << checksum << accumulatorProofOfKnowledge;
 	}
 
-} // namespace libzerocoin
+	void CoinSpend::Unserialize(Stream& s) {
+		s >> coin >> accumulator >> checksum >> accumulatorProofOfKnowledge;
+	}
+
+	bool CoinSpend::Verify(const Accumulator& accumulator, const SpendMetaData& metaData) const {
+		// Verify the CoinSpend logic here
+		return accumulatorProofOfKnowledge.Verify(accumulator, metaData);
+	}
+
+	CoinSpend* CoinSpend::Create(const ZerocoinParams* params, const PrivateCoin& coin, Accumulator& accumulator, uint32_t checksum) {
+		return new CoinSpend(params, coin, accumulator, checksum);
+	}
+
+}
