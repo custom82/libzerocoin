@@ -1,7 +1,6 @@
 #include "ParamGeneration.h"
 #include "bitcoin_bignum/hash.h" // FIX per CHashWriter
 
-using namespace libzerocoin;
 
 // Default seed generator bits count:
 static const uint32_t SEED_BITS = 256;
