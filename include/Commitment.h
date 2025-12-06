@@ -1,7 +1,7 @@
 #ifndef COMMITMENT_H
 #define COMMITMENT_H
 
-#include "Bignum.h"
+#include "bignum.h"
 #include "Stream.h"
 #include "CommitmentProofOfKnowledge.h"
 #include "Accumulator.h"
