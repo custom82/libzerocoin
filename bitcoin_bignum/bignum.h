@@ -9,7 +9,7 @@
 
 #include "uint256.h"
 
-// RAII wrapper BN_CTX per evitare leak
+// RAII wrapper per BN_CTX
 class CAutoBN_CTX {
 private:
     BN_CTX* ctx;
@@ -82,6 +82,48 @@ public:
 
     CBigNum gcd(const CBigNum& b) const;
     CBigNum sqrt_mod(const CBigNum& p) const;
+
+    // ===== Zerocoin compatibility extensions =====
+
+    // random Bignum modulo max
+    static CBigNum randBignum(const CBigNum& max)
+    {
+        BN_CTX* ctx = BN_CTX_new();
+        CBigNum r;
+        BN_rand_range(r.bn, max.bn);
+        BN_CTX_free(ctx);
+        return r;
+    }
+
+    // bit size accessor
+    int bitSize() const
+    {
+        return BN_num_bits(bn);
+    }
+
+    // slow exponentiation (sufficiente per p da ParamGeneration)
+    CBigNum pow(unsigned int exp) const
+    {
+        CBigNum base = *this;
+        CBigNum r(1);
+
+        BN_CTX* ctx = BN_CTX_new();
+        for (unsigned int i = 0; i < exp; i++) {
+            BN_mul(r.bn, r.bn, base.bn, ctx);
+        }
+        BN_CTX_free(ctx);
+        return r;
+    }
+
+    // multiplication operator
+    CBigNum operator*(const CBigNum& other) const
+    {
+        CBigNum r;
+        BN_CTX* ctx = BN_CTX_new();
+        BN_mul(r.bn, bn, other.bn, ctx);
+        BN_CTX_free(ctx);
+        return r;
+    }
 };
 
 #endif // BITCOIN_BIGNUM_H

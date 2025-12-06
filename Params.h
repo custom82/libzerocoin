@@ -1,40 +1,32 @@
-#ifndef PARAMS_H
-#define PARAMS_H
+#ifndef LIBZEROCOIN_PARAMS_H
+#define LIBZEROCOIN_PARAMS_H
 
-#include "bitcoin_bignum/bignum.h"
 #include "src/serialize_stub.h"
+#include "src/zerocoin_types.h"
+#include "bitcoin_bignum/bignum.h"
 
 namespace libzerocoin {
 
-	class IntegerGroupParams {
-	public:
+	struct IntegerGroupParams
+	{
 		CBigNum modulus;
 		CBigNum groupOrder;
 		CBigNum g;
 		CBigNum h;
 	};
 
-	class AccumulatorAndProofParams {
-	public:
+	struct AccumulatorAndProofParams
+	{
 		CBigNum accumulatorModulus;
-		CBigNum accumulatorBase;
-		CBigNum minCoinValue;
-		CBigNum maxCoinValue;
-		CBigNum accumulatorPoKCommitmentGroupG;
-		CBigNum accumulatorPoKCommitmentGroupH;
-		uint32_t k_prime;
-		uint32_t k_dprime;
 	};
 
-	class ZerocoinParams {
-	public:
-		bool initialized;
-		uint32_t securityLevel;
-		AccumulatorAndProofParams accumulatorParams;
+	struct ZerocoinParams
+	{
 		IntegerGroupParams coinCommitmentGroup;
 		IntegerGroupParams serialNumberSoKCommitmentGroup;
-
-		ZerocoinParams() : initialized(false), securityLevel(80) {}
+		AccumulatorAndProofParams accumulatorParams;
+		unsigned int zk_bits;
+		unsigned int zkp_iterations;
 	};
 
 }
