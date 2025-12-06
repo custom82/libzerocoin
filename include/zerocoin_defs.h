@@ -53,6 +53,7 @@ namespace libzerocoin {
 
         IntegerGroupParams();
         Bignum randomElement() const;
+    Bignum groupModulus() const { return modulus; }
     };
 
     // Parametri accumulatore
