@@ -2,7 +2,6 @@
 #define LIBZEROCOIN_COIN_H
 
 #include "bignum.h"  // Aggiungi CBigNum
-#include "Params.h"
 
 namespace libzerocoin
 {

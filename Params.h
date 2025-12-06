@@ -1,18 +1,27 @@
 #ifndef LIBZEROCOIN_PARAMS_H
 #define LIBZEROCOIN_PARAMS_H
 
-#include "bignum.h"  // Aggiungiamo l'inclusione di CBigNum
+#include "bignum.h"  // Aggiungi CBigNum
 
 namespace libzerocoin
 {
 
-	// Parametri per Accumulatore
+	struct ZerocoinParams
+	{
+		CBigNum accumulatorModulus;  // Usa CBigNum
+		// Altri parametri...
+	};
+
+	struct IntegerGroupParams
+	{
+		CBigNum modulus;
+		// Altri parametri...
+	};
+
 	struct AccumulatorAndProofParams
 	{
 		CBigNum accumulatorModulus;  // Usa CBigNum
 		// Altri parametri...
-
-		// Funzioni per la serializzazione...
 	};
 
 } // namespace libzerocoin

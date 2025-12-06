@@ -1,8 +1,7 @@
 #ifndef LIBZEROCOIN_ACCUMULATORPROOF_H
 #define LIBZEROCOIN_ACCUMULATORPROOF_H
 
-#include <vector>
-#include "bignum.h"  // Include il file dove è definito CBigNum
+#include "bignum.h"  // Assicurati di includere CBigNum
 #include "Commitment.h"
 #include "Accumulator.h"
 #include "Coin.h"
@@ -10,11 +9,10 @@
 namespace libzerocoin
 {
 
-	// Dichiariamo l'uso di CBigNum al posto di Bignum
 	class AccumulatorProofOfKnowledge
 	{
 	private:
-		CBigNum C_e; // CBigNum invece di Bignum
+		CBigNum C_e;
 		CBigNum C_u;
 		CBigNum C_r;
 		CBigNum st_1;
@@ -31,9 +29,10 @@ namespace libzerocoin
 		CBigNum s_eta;
 
 	public:
-		// Constructor per inizializzare i membri
-		AccumulatorProofOfKnowledge(const AccumulatorAndProofParams* params, const Commitment& commitment,
-									const AccumulatorWitness& witness, Accumulator& accumulator);
+		AccumulatorProofOfKnowledge(const AccumulatorAndProofParams* params,
+									const Commitment& commitment,
+							  const AccumulatorWitness& witness,
+							  Accumulator& accumulator);
 
 		bool Verify(const Accumulator& accumulator, const CBigNum& valueOfCommitmentToCoin) const;
 
