@@ -11,6 +11,7 @@
  **/
 
 #include "Zerocoin.h"
+#include "src/serialize_stub.h"
 
 namespace libzerocoin {
 
