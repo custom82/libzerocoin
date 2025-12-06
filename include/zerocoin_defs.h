@@ -6,12 +6,14 @@
 #include <string>
 #include <vector>
 
+// Forward declarations in global namespace
+class CAccumulatorWitness;
+
 namespace libzerocoin {
 
     // Forward declarations
     class IntegerGroupParams;
     class ZerocoinParams;
-    class Params;
     class Accumulator;
     class AccumulatorWitness;
     class Commitment;
@@ -23,9 +25,12 @@ namespace libzerocoin {
     class SerialNumberSignatureOfKnowledge;
     class SpendMetaData;
 
+    // Usa using invece di typedef per evitare conflitti
+    using Params = ZerocoinParams;
+
     // Tipi di base
-    typedef CBigNum Bignum;
-    typedef std::vector<unsigned char> uint256;
+    using Bignum = CBigNum;
+    using uint256 = std::vector<unsigned char>;
 
     // Denominazioni delle monete
     enum CoinDenomination {
@@ -49,6 +54,9 @@ namespace libzerocoin {
 
         IntegerGroupParams();
         Bignum randomElement() const;
+        Bignum getG() const { return g; }
+        Bignum getH() const { return h; }
+        Bignum getModulus() const { return modulus; }
     };
 
     // Parametri accumulatore
@@ -70,10 +78,14 @@ namespace libzerocoin {
         int securityLevel;
 
         ZerocoinParams(const Bignum& N, uint32_t securityLevel);
-    };
 
-    // Alias
-    typedef ZerocoinParams Params;
+        // Getters
+        const IntegerGroupParams& getCoinCommitmentGroup() const { return coinCommitmentGroup; }
+        const IntegerGroupParams& getSerialNumberSoKCommitmentGroup() const { return serialNumberSoKCommitmentGroup; }
+        const AccumulatorAndProofParams& getAccumulatorParams() const { return accumulatorParams; }
+        const Bignum& getAccumulatorModulus() const { return accumulatorModulus; }
+        int getSecurityLevel() const { return securityLevel; }
+    };
 
 } // namespace libzerocoin
 

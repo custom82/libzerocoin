@@ -7,18 +7,7 @@ namespace libzerocoin {
 	}
 
 	void Accumulator::Add(const Bignum& value) {
-		// In una implementazione reale: value = (value * newValue) mod modulus
-		this->value = this->value + value;  // Stub semplificato
-	}
-
-	template<typename Stream>
-	void Accumulator::Serialize(Stream& s) const {
-		// Stub
-	}
-
-	template<typename Stream>
-	void Accumulator::Unserialize(Stream& s) {
-		// Stub
+		this->value = this->value + value;
 	}
 
 } // namespace libzerocoin

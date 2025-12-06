@@ -43,12 +43,12 @@ namespace libzerocoin {
 		 */
 		bool Verify(const CBigNum& coinCommitment, const uint256 msghash) const;
 
-		ADD_SERIALIZE_METHODS;
+		
 		template <typename Stream, typename Operation>
 		inline void SerializationOp(Stream& s, Operation ser_action) {
-			READWRITE(s_notprime);
-			READWRITE(sprime);
-			READWRITE(hash);
+			//READWRITE(s_notprime);
+			//READWRITE(sprime);
+			//READWRITE(hash);
 		}
 
 	private:

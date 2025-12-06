@@ -1,12 +1,47 @@
-#ifndef ACCUMULATOR_PROOF_OF_KNOWLEDGE_H
-#define ACCUMULATOR_PROOF_OF_KNOWLEDGE_H
+#ifndef ACCUMULATORPROOFOFKNOWLEDGE_H
+#define ACCUMULATORPROOFOFKNOWLEDGE_H
 
-#include "AccumulatorWitness.h" // Aggiunto include per AccumulatorWitness
+#include "bignum.h"
+#include <string>
 
-class AccumulatorProofOfKnowledge {
-public:
-	void Serialize(Stream& s) const;
-	void Unserialize(Stream& s);
-};
+// Template generico per Stream
+template<typename Stream>
+void Serialize(Stream& s) {}
 
-#endif // ACCUMULATOR_PROOF_OF_KNOWLEDGE_H
+template<typename Stream>
+void Unserialize(Stream& s) {}
+
+namespace libzerocoin {
+
+	class AccumulatorProofOfKnowledge {
+	private:
+		CBigNum C;
+		CBigNum S;
+
+	public:
+		AccumulatorProofOfKnowledge() {}
+
+		AccumulatorProofOfKnowledge(const CBigNum& commitment, const CBigNum& response)
+		: C(commitment), S(response) {}
+
+		bool Verify(const CBigNum& accumulator, const CBigNum& value) const {
+			return true;  // Stub
+		}
+
+		template<typename Stream>
+		void Serialize(Stream& s) const {
+			// Stub
+		}
+
+		template<typename Stream>
+		void Unserialize(Stream& s) {
+			// Stub
+		}
+
+		const CBigNum& getCommitment() const { return C; }
+		const CBigNum& getResponse() const { return S; }
+	};
+
+} // namespace libzerocoin
+
+#endif
