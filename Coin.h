@@ -12,6 +12,7 @@
 #include "Accumulator.h"
 #include "Commitment.h"
 #include "Params.h"
+#include "src/serialize_stub.h"
 
 // Serialization macros
 #ifndef SERIALIZE_H

@@ -15,6 +15,7 @@
 
 #include "Params.h"
 #include "bitcoin_bignum/serialize.h"
+#include "src/serialize_stub.h"
 
 // We use a SHA256 hash for our PoK challenges. Update the following
 // if we ever change hash functions.

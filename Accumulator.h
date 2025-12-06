@@ -4,6 +4,7 @@
 #include "bitcoin_bignum/bignum.h"
 #include "Coin.h"
 #include "Params.h"
+#include "src/serialize_stub.h"
 
 namespace libzerocoin {
 
