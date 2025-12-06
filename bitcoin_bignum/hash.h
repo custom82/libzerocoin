@@ -4,36 +4,29 @@
 #include <vector>
 #include <cstdint>
 #include <string>
+#include <openssl/sha.h>
+
 #include "uint256.h"
+#include "serialize.h"
 
-class CHashWriter {
-private:
-    int nType;
-    int nVersion;
-    std::vector<unsigned char> buffer;
+inline uint256 Hash(const unsigned char* begin, const unsigned char* end)
+{
+    uint256 result;
+    SHA256_CTX ctx;
 
-public:
-    CHashWriter(int nTypeIn, int nVersionIn) : nType(nTypeIn), nVersion(nVersionIn) {}
+    SHA256_Init(&ctx);
+    SHA256_Update(&ctx, begin, end - begin);
+    SHA256_Final((unsigned char*)&result, &ctx);
 
-    CHashWriter& write(const char* pch, size_t size) {
-        buffer.insert(buffer.end(), pch, pch + size);
-        return *this;
-    }
+    return result;
+}
 
-    template<typename T>
-    CHashWriter& operator<<(const T& obj) {
-        // Serialize the object
-        ::Serialize(*this, obj, nType, nVersion);
-        return *this;
-    }
-
-    uint256 GetHash() const {
-        uint256 result;
-        SHA256(buffer.data(), buffer.size(), (unsigned char*)&result);
-        return result;
-    }
-
-    size_t size() const { return buffer.size(); }
-};
+template<typename T>
+uint256 Hash(const T& v)
+{
+    CDataStream ss(SER_GETHASH, 0);
+    ss << v;
+    return Hash((unsigned char*)&ss[0], (unsigned char*)&ss[0] + ss.size());
+}
 
 #endif // BITCOIN_HASH_H
