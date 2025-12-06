@@ -33,6 +33,11 @@ option(BUILD_SHARED_LIBS "Build shared library" ON)
 add_library(libzerocoin
     src/libzerocoin.cpp
 )
+# Imposta esplicitamente il nome di output
+
+set_target_properties(zerocoin PROPERTIES
+    OUTPUT_NAME "zerocoin"  # Genererà libzerocoin.so
+    PREFIX ""
 
 target_include_directories(libzerocoin PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
