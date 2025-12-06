@@ -30,6 +30,13 @@ namespace libzerocoin {
     using Bignum = CBigNum;
     using uint256 = std::vector<unsigned char>;
 
+    // Helper per uint256
+    inline uint256 make_uint256(const std::string& hex) {
+        uint256 result(32);
+        // Stub implementation
+        return result;
+    }
+
     // Denominazioni delle monete
     enum CoinDenomination {
         ZQ_ERROR = 0,
@@ -53,7 +60,7 @@ namespace libzerocoin {
 
         IntegerGroupParams();
         Bignum randomElement() const;
-    Bignum groupModulus() const { return modulus; }
+        Bignum groupModulus() const { return modulus; }
     };
 
     // Parametri accumulatore

@@ -5,9 +5,13 @@
 #include <string>
 #include <vector>
 
-// Hash function declarations
-uint256 Hash(const std::vector<unsigned char>& vch);
-uint256 Hash(const std::string& str);
-uint256 Hash(const CBigNum& bn);
+namespace libzerocoin {
+
+    // Hash function declarations
+    uint256 Hash(const std::vector<unsigned char>& vch);
+    uint256 Hash(const std::string& str);
+    uint256 Hash(const CBigNum& bn);
+
+} // namespace libzerocoin
 
 #endif

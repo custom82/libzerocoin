@@ -1,33 +1,48 @@
 #include "ParamGeneration.h"
-#include "hash.h" // FIX per CHashWriter
-#include "serialize_stub.h"
+#include "hash.h"
+#include <openssl/sha.h>
+#include <sstream>
+#include <iomanip>
 
-// Default seed generator bits count:
-static const uint32_t SEED_BITS = 256;
+namespace libzerocoin {
 
-// Fix alla firma (dichiara default params)
-CBigNum GenerateRandomPrime(uint32_t primeBitLen, const uint256& inSeed,
-							uint256* outSeed, unsigned int* outCounter);
+	uint256 CalculateSeed(const CBigNum& modulus, const std::string& auxString,
+						  uint32_t index, std::string debug) {
+		(void)debug;
 
-CBigNum GenerateRandomPrime(uint32_t primeBitLen, const uint256& inSeed,
-							uint256* outSeed = nullptr,
-							unsigned int* outCounter = nullptr);
+		// Simple implementation without CHashWriter
+		std::vector<unsigned char> modBytes = modulus.getvch();
+		std::string auxBytes = auxString;
 
-// Implementazione reale… lasciata come in repo
-// Se vuoi posso darti anche questa versione ripulita
+		// Combine all inputs
+		std::vector<unsigned char> combined;
+		combined.insert(combined.end(), modBytes.begin(), modBytes.end());
+		combined.insert(combined.end(), auxBytes.begin(), auxBytes.end());
 
+		// Add index as 4 bytes
+		for (int i = 0; i < 4; i++) {
+			combined.push_back((index >> (8 * i)) & 0xFF);
+		}
 
-uint256 CalculateSeed(const CBigNum& modulus, const std::string& label,
-					  uint32_t index, std::string debug = "")
-{
-	std::vector<unsigned char> modBytes = modulus.getvch();
+		return Hash(combined);
+						  }
 
-	CHashWriter hasher(0, 0);
-	hasher.write((const char*)modBytes.data(), modBytes.size());
-	hasher.write(label.data(), label.size());
-	hasher.write((const char*)&index, sizeof(index));
+						  uint256 CalculateHash(const CBigNum& a, const CBigNum& b) {
+							  std::vector<unsigned char> aBytes = a.getvch();
+							  std::vector<unsigned char> bBytes = b.getvch();
 
-	return hasher.GetHash();
-}
+							  std::vector<unsigned char> combined;
+							  combined.insert(combined.end(), aBytes.begin(), aBytes.end());
+							  combined.insert(combined.end(), bBytes.begin(), bBytes.end());
 
-// … resto del file originale invariato …
+							  return Hash(combined);
+						  }
+
+						  CBigNum generateRandomPrime(uint32_t primeBitLen, const CBigNum& modulus) {
+							  (void)primeBitLen;
+							  (void)modulus;
+							  // Stub: return a small prime
+							  return CBigNum(65537);
+						  }
+
+} // namespace libzerocoin
