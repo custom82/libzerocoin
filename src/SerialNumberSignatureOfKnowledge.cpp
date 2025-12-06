@@ -1,8 +1,8 @@
 #ifndef LIBZEROCOIN_SERIALNUM_SIGNATURE_OF_KNOWLEDGE_H
 #define LIBZEROCOIN_SERIALNUM_SIGNATURE_OF_KNOWLEDGE_H
 
-#include "src/serialize_stub.h"
-#include "src/zerocoin_types.h"
+#include "serialize_stub.h"
+#include "zerocoin_types.h"
 #include "bitcoin_bignum/bignum.h"
 #include "Params.h"
 #include "Coin.h"
