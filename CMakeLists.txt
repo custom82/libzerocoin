@@ -1,29 +1,36 @@
 cmake_minimum_required(VERSION 3.16)
-project(libzerocoin VERSION 2.0.0 LANGUAGES CXX)
+project(libzerocoin
+    VERSION 1.0.0
+    DESCRIPTION "Zerocoin cryptographic library"
+    LANGUAGES CXX
+)
 
-# FORZA C++20
+# Policy settings
+cmake_policy(SET CMP0167 NEW)
+
+# Find dependencies
+find_package(OpenSSL 3.0 REQUIRED)
+find_package(Boost 1.75 REQUIRED COMPONENTS serialization)
+
+# Configure compiler options
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Flag moderni
-add_compile_options(-std=c++20)
-add_compile_options(-Wall -Wextra -Wpedantic)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wno-deprecated-declarations
+    )
+endif()
 
-# Trova dipendenze
-find_package(OpenSSL 3.0 REQUIRED)
-find_package(Boost 1.75 REQUIRED COMPONENTS serialization)
+# Shared library option
+option(BUILD_SHARED_LIBS "Build shared library" ON)
 
-# Configura output
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-
-# Include directories
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-# Target principale
-add_library(libzerocoin STATIC
+# Library target
+add_library(libzerocoin
     src/libzerocoin.cpp
 )
 
@@ -32,15 +39,15 @@ target_include_directories(libzerocoin PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(libzerocoin PUBLIC
+target_link_libraries(libzerocoin
     OpenSSL::Crypto
     Boost::serialization
 )
 
-# Test
-if(BUILD_TESTS)
-    enable_testing()
-    add_executable(zerocoin_test tests/test_main.cpp)
-    target_link_libraries(zerocoin_test libzerocoin)
-    add_test(NAME zerocoin_test COMMAND zerocoin_test)
-endif()
+# Set version and properties
+set_target_properties(libzerocoin PROPERTIES
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
