@@ -63,8 +63,3 @@ set_target_properties(zerocoin PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
 )
-
-# Configura la generazione del pacchetto TGZ
-set(CPACK_GENERATOR "TGZ")
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-include(CPack)
