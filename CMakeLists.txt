@@ -8,11 +8,11 @@ project(libzerocoin
 # Policy settings
 cmake_policy(SET CMP0167 NEW)
 
-# Find dependencies
+# Trova le dipendenze
 find_package(OpenSSL 3.0 REQUIRED)
 find_package(Boost 1.75 REQUIRED COMPONENTS serialization)
 
-# Configure compiler options
+# Configurazione delle opzioni del compilatore
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -26,34 +26,40 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
-# Shared library option
+# Opzione per la libreria condivisa
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 
-# Library target - nome base senza prefisso
-add_library(zerocoin SHARED
-    src/libzerocoin.cpp
-)
+# Condizionale per scegliere la libreria statica o condivisa
+if(BUILD_SHARED_LIBS)
+    add_library(zerocoin SHARED
+        src/libzerocoin.cpp
+    )
+else()
+    add_library(zerocoin STATIC
+        src/libzerocoin.cpp
+    )
+endif()
 
-# Imposta esplicitamente il nome di output
+# Imposta esplicitamente il nome dell'output per la libreria come libzerocoin
 set_target_properties(zerocoin PROPERTIES
-    OUTPUT_NAME "zerocoin"  # Genererà libzerocoin.so
-    PREFIX ""
+    OUTPUT_NAME "zerocoin"  # Genererà libzerocoin.so (per SHARED) o libzerocoin.a (per STATIC)
+    PREFIX "lib"  # Aggiungi il prefisso 'lib' su Linux
 )
 
-target_include_directories(libzerocoin PUBLIC
+# Inclusione delle directory
+target_include_directories(zerocoin PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(libzerocoin
+# Link delle librerie necessarie
+target_link_libraries(zerocoin
     OpenSSL::Crypto
     Boost::serialization
 )
 
-# Set version and properties
-set_target_properties(libzerocoin PROPERTIES
+# Imposta versione e altre proprietà
+set_target_properties(zerocoin PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON
 )
